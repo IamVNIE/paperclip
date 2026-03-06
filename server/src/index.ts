@@ -323,6 +323,7 @@ if (config.databaseUrl) {
       password: "paperclip",
       port,
       persistent: true,
+      initdbFlags: ["--encoding=UTF-8"],
       onLog: appendEmbeddedPostgresLog,
       onError: appendEmbeddedPostgresLog,
     });

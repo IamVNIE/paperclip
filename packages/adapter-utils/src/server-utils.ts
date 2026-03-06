@@ -19,6 +19,12 @@ export const runningProcesses = new Map<string, RunningProcess>();
 export const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 export const MAX_EXCERPT_BYTES = 32 * 1024;
 const SENSITIVE_ENV_KEY = /(key|token|secret|password|passwd|authorization|cookie)/i;
+const CLAUDE_SESSION_ENV_KEYS = [
+  "CLAUDECODE",
+  "CLAUDE_CODE_USE_OAUTH",
+  "CLAUDE_CODE_SSE_PORT",
+  "CLAUDE_CODE_ENTRYPOINT",
+];
 
 export function parseObject(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -211,7 +217,9 @@ export async function runChildProcess(
   const onLogError = opts.onLogError ?? ((err, id, msg) => console.warn({ err, runId: id }, msg));
 
   return new Promise<RunProcessResult>((resolve, reject) => {
-    const mergedEnv = ensurePathInEnv({ ...process.env, ...opts.env });
+    const baseEnv = { ...process.env };
+    for (const key of CLAUDE_SESSION_ENV_KEYS) delete baseEnv[key];
+    const mergedEnv = ensurePathInEnv({ ...baseEnv, ...opts.env });
     const child = spawn(command, args, {
       cwd: opts.cwd,
       env: mergedEnv,
