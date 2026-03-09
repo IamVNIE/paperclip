@@ -13,8 +13,12 @@ import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@/components/ui/visually-hidden";
 import { Button } from "@/components/ui/button";
+
 import {
   Popover,
   PopoverContent,
@@ -531,7 +535,6 @@ export function NewIssueDialog() {
     >
       <DialogContent
         showCloseButton={false}
-        aria-describedby={undefined}
         className={cn(
           "p-0 gap-0 flex flex-col max-h-[calc(100dvh-2rem)]",
           expanded
@@ -552,7 +555,12 @@ export function NewIssueDialog() {
           }
         }}
       >
+        <VisuallyHidden>
+          <DialogTitle>New Issue</DialogTitle>
+          <DialogDescription>Create a new issue for the selected company.</DialogDescription>
+        </VisuallyHidden>
         {/* Header bar */}
+
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Popover open={companyOpen} onOpenChange={setCompanyOpen}>

@@ -9,8 +9,12 @@ import { queryKeys } from "../lib/queryKeys";
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@/components/ui/visually-hidden";
 import { Button } from "@/components/ui/button";
+
 import {
   Popover,
   PopoverContent,
@@ -217,7 +221,12 @@ export function NewProjectDialog() {
         className={cn("p-0 gap-0", expanded ? "sm:max-w-2xl" : "sm:max-w-lg")}
         onKeyDown={handleKeyDown}
       >
+        <VisuallyHidden>
+          <DialogTitle>New project</DialogTitle>
+          <DialogDescription>Create a new project with optional workspace hints.</DialogDescription>
+        </VisuallyHidden>
         {/* Header */}
+
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             {selectedCompany && (

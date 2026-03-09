@@ -8,8 +8,12 @@ import { queryKeys } from "../lib/queryKeys";
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@/components/ui/visually-hidden";
 import { Button } from "@/components/ui/button";
+
 import {
   ArrowLeft,
   Bot,
@@ -123,7 +127,14 @@ export function NewAgentDialog() {
         showCloseButton={false}
         className="sm:max-w-md p-0 gap-0 overflow-hidden"
       >
+        <VisuallyHidden>
+          <DialogTitle>Add a new agent</DialogTitle>
+          <DialogDescription>
+            Choose to ask the CEO to create an agent or configure one manually.
+          </DialogDescription>
+        </VisuallyHidden>
         {/* Header */}
+
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
           <span className="text-sm text-muted-foreground">Add a new agent</span>
           <Button
