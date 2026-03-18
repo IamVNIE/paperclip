@@ -10,6 +10,7 @@ import { and, eq } from "drizzle-orm";
 import {
   createDb,
   ensurePostgresDatabase,
+  getPostgresDataDirectory,
   inspectMigrations,
   applyPendingMigrations,
   reconcilePendingMigrationHistory,
@@ -53,6 +54,7 @@ type EmbeddedPostgresCtor = new (opts: {
   password: string;
   port: number;
   persistent: boolean;
+  initdbFlags?: string[];
   onLog?: (message: unknown) => void;
   onError?: (message: unknown) => void;
 }) => EmbeddedPostgresInstance;
@@ -82,8 +84,7 @@ export async function startServer(): Promise<StartedServer> {
     | "skipped"
     | "already applied"
     | "applied (empty database)"
-    | "applied (pending migrations)"
-    | "pending migrations skipped";
+    | "applied (pending migrations)";
   
   function formatPendingMigrationSummary(migrations: string[]): string {
     if (migrations.length === 0) return "none";
@@ -138,11 +139,10 @@ export async function startServer(): Promise<StartedServer> {
       );
       const apply = autoApply ? true : await promptApplyMigrations(state.pendingMigrations);
       if (!apply) {
-        logger.warn(
-          { pendingMigrations: state.pendingMigrations },
-          `${label} has pending migrations; continuing without applying. Run pnpm db:migrate to apply before startup.`,
+        throw new Error(
+          `${label} has pending migrations (${formatPendingMigrationSummary(state.pendingMigrations)}). ` +
+            "Refusing to start against a stale schema. Run pnpm db:migrate or set PAPERCLIP_MIGRATION_AUTO_APPLY=true.",
         );
-        return "pending migrations skipped";
       }
   
       logger.info({ pendingMigrations: state.pendingMigrations }, `Applying ${state.pendingMigrations.length} pending migrations for ${label}`);
@@ -152,11 +152,10 @@ export async function startServer(): Promise<StartedServer> {
   
     const apply = autoApply ? true : await promptApplyMigrations(state.pendingMigrations);
     if (!apply) {
-      logger.warn(
-        { pendingMigrations: state.pendingMigrations },
-        `${label} has pending migrations; continuing without applying. Run pnpm db:migrate to apply before startup.`,
+      throw new Error(
+        `${label} has pending migrations (${formatPendingMigrationSummary(state.pendingMigrations)}). ` +
+          "Refusing to start against a stale schema. Run pnpm db:migrate or set PAPERCLIP_MIGRATION_AUTO_APPLY=true.",
       );
-      return "pending migrations skipped";
     }
   
     logger.info({ pendingMigrations: state.pendingMigrations }, `Applying ${state.pendingMigrations.length} pending migrations for ${label}`);
@@ -322,44 +321,60 @@ export async function startServer(): Promise<StartedServer> {
     if (runningPid) {
       logger.warn(`Embedded PostgreSQL already running; reusing existing process (pid=${runningPid}, port=${port})`);
     } else {
-      const detectedPort = await detectPort(configuredPort);
-      if (detectedPort !== configuredPort) {
-        logger.warn(`Embedded PostgreSQL port is in use; using next free port (requestedPort=${configuredPort}, selectedPort=${detectedPort})`);
-      }
-      port = detectedPort;
-      logger.info(`Using embedded PostgreSQL because no DATABASE_URL set (dataDir=${dataDir}, port=${port})`);
-      embeddedPostgres = new EmbeddedPostgres({
-        databaseDir: dataDir,
-        user: "paperclip",
-        password: "paperclip",
-        port,
-        persistent: true,
-        onLog: appendEmbeddedPostgresLog,
-        onError: appendEmbeddedPostgresLog,
-      });
-  
-      if (!clusterAlreadyInitialized) {
+      const configuredAdminConnectionString = `postgres://paperclip:paperclip@127.0.0.1:${configuredPort}/postgres`;
+      try {
+        const actualDataDir = await getPostgresDataDirectory(configuredAdminConnectionString);
+        if (
+          typeof actualDataDir !== "string" ||
+          resolve(actualDataDir) !== resolve(dataDir)
+        ) {
+          throw new Error("reachable postgres does not use the expected embedded data directory");
+        }
+        await ensurePostgresDatabase(configuredAdminConnectionString, "paperclip");
+        logger.warn(
+          `Embedded PostgreSQL appears to already be reachable without a pid file; reusing existing server on configured port ${configuredPort}`,
+        );
+      } catch {
+        const detectedPort = await detectPort(configuredPort);
+        if (detectedPort !== configuredPort) {
+          logger.warn(`Embedded PostgreSQL port is in use; using next free port (requestedPort=${configuredPort}, selectedPort=${detectedPort})`);
+        }
+        port = detectedPort;
+        logger.info(`Using embedded PostgreSQL because no DATABASE_URL set (dataDir=${dataDir}, port=${port})`);
+        embeddedPostgres = new EmbeddedPostgres({
+          databaseDir: dataDir,
+          user: "paperclip",
+          password: "paperclip",
+          port,
+          persistent: true,
+          initdbFlags: ["--encoding=UTF8", "--locale=C"],
+          onLog: appendEmbeddedPostgresLog,
+          onError: appendEmbeddedPostgresLog,
+        });
+
+        if (!clusterAlreadyInitialized) {
+          try {
+            await embeddedPostgres.initialise();
+          } catch (err) {
+            logEmbeddedPostgresFailure("initialise", err);
+            throw err;
+          }
+        } else {
+          logger.info(`Embedded PostgreSQL cluster already exists (${clusterVersionFile}); skipping init`);
+        }
+
+        if (existsSync(postmasterPidFile)) {
+          logger.warn("Removing stale embedded PostgreSQL lock file");
+          rmSync(postmasterPidFile, { force: true });
+        }
         try {
-          await embeddedPostgres.initialise();
+          await embeddedPostgres.start();
         } catch (err) {
-          logEmbeddedPostgresFailure("initialise", err);
+          logEmbeddedPostgresFailure("start", err);
           throw err;
         }
-      } else {
-        logger.info(`Embedded PostgreSQL cluster already exists (${clusterVersionFile}); skipping init`);
+        embeddedPostgresStartedByThisProcess = true;
       }
-  
-      if (existsSync(postmasterPidFile)) {
-        logger.warn("Removing stale embedded PostgreSQL lock file");
-        rmSync(postmasterPidFile, { force: true });
-      }
-      try {
-        await embeddedPostgres.start();
-      } catch (err) {
-        logEmbeddedPostgresFailure("start", err);
-        throw err;
-      }
-      embeddedPostgresStartedByThisProcess = true;
     }
   
     const embeddedAdminConnectionString = `postgres://paperclip:paperclip@127.0.0.1:${port}/postgres`;
@@ -512,11 +527,14 @@ export async function startServer(): Promise<StartedServer> {
   if (config.heartbeatSchedulerEnabled) {
     const heartbeat = heartbeatService(db as any);
   
-    // Reap orphaned runs at startup (no threshold -- runningProcesses is empty)
-    void heartbeat.reapOrphanedRuns().catch((err) => {
-      logger.error({ err }, "startup reap of orphaned heartbeat runs failed");
-    });
-
+    // Reap orphaned running runs at startup while in-memory execution state is empty,
+    // then resume any persisted queued runs that were waiting on the previous process.
+    void heartbeat
+      .reapOrphanedRuns()
+      .then(() => heartbeat.resumeQueuedRuns())
+      .catch((err) => {
+        logger.error({ err }, "startup heartbeat recovery failed");
+      });
     setInterval(() => {
       void heartbeat
         .tickTimers(new Date())
@@ -529,11 +547,13 @@ export async function startServer(): Promise<StartedServer> {
           logger.error({ err }, "heartbeat timer tick failed");
         });
   
-      // Periodically reap orphaned runs (5-min staleness threshold)
+      // Periodically reap orphaned runs (5-min staleness threshold) and make sure
+      // persisted queued work is still being driven forward.
       void heartbeat
         .reapOrphanedRuns({ staleThresholdMs: 5 * 60 * 1000 })
+        .then(() => heartbeat.resumeQueuedRuns())
         .catch((err) => {
-          logger.error({ err }, "periodic reap of orphaned heartbeat runs failed");
+          logger.error({ err }, "periodic heartbeat recovery failed");
         });
     }, config.heartbeatSchedulerIntervalMs);
   }

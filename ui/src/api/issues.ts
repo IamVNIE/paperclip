@@ -1,4 +1,14 @@
-import type { Approval, Issue, IssueAttachment, IssueComment, IssueLabel } from "@paperclipai/shared";
+import type {
+  Approval,
+  DocumentRevision,
+  Issue,
+  IssueAttachment,
+  IssueComment,
+  IssueDocument,
+  IssueLabel,
+  IssueWorkProduct,
+  UpsertIssueDocument,
+} from "@paperclipai/shared";
 import { api } from "./client";
 
 export const issuesApi = {
@@ -53,6 +63,14 @@ export const issuesApi = {
         ...(interrupt === undefined ? {} : { interrupt }),
       },
     ),
+  listDocuments: (id: string) => api.get<IssueDocument[]>(`/issues/${id}/documents`),
+  getDocument: (id: string, key: string) => api.get<IssueDocument>(`/issues/${id}/documents/${encodeURIComponent(key)}`),
+  upsertDocument: (id: string, key: string, data: UpsertIssueDocument) =>
+    api.put<IssueDocument>(`/issues/${id}/documents/${encodeURIComponent(key)}`, data),
+  listDocumentRevisions: (id: string, key: string) =>
+    api.get<DocumentRevision[]>(`/issues/${id}/documents/${encodeURIComponent(key)}/revisions`),
+  deleteDocument: (id: string, key: string) =>
+    api.delete<{ ok: true }>(`/issues/${id}/documents/${encodeURIComponent(key)}`),
   listAttachments: (id: string) => api.get<IssueAttachment[]>(`/issues/${id}/attachments`),
   uploadAttachment: (
     companyId: string,
@@ -73,4 +91,10 @@ export const issuesApi = {
     api.post<Approval[]>(`/issues/${id}/approvals`, { approvalId }),
   unlinkApproval: (id: string, approvalId: string) =>
     api.delete<{ ok: true }>(`/issues/${id}/approvals/${approvalId}`),
+  listWorkProducts: (id: string) => api.get<IssueWorkProduct[]>(`/issues/${id}/work-products`),
+  createWorkProduct: (id: string, data: Record<string, unknown>) =>
+    api.post<IssueWorkProduct>(`/issues/${id}/work-products`, data),
+  updateWorkProduct: (id: string, data: Record<string, unknown>) =>
+    api.patch<IssueWorkProduct>(`/work-products/${id}`, data),
+  deleteWorkProduct: (id: string) => api.delete<IssueWorkProduct>(`/work-products/${id}`),
 };

@@ -23,11 +23,13 @@ import {
   agentService,
   accessService,
   approvalService,
+  budgetService,
   heartbeatService,
   issueApprovalService,
   issueService,
   logActivity,
   secretService,
+  workspaceOperationService,
 } from "../services/index.js";
 import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
@@ -57,9 +59,11 @@ export function agentRoutes(db: Db) {
   const svc = agentService(db);
   const access = accessService(db);
   const approvalsSvc = approvalService(db);
+  const budgets = budgetService(db);
   const heartbeat = heartbeatService(db);
   const issueApprovalsSvc = issueApprovalService(db);
   const secretsSvc = secretService(db);
+  const workspaceOperations = workspaceOperationService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
 
   function canCreateAgents(agent: { role: string; permissions: Record<string, unknown> | null | undefined }) {
@@ -575,6 +579,34 @@ export function agentRoutes(db: Db) {
     res.json({ ...agent, chainOfCommand });
   });
 
+  router.get("/agents/me/inbox-lite", async (req, res) => {
+    if (req.actor.type !== "agent" || !req.actor.agentId || !req.actor.companyId) {
+      res.status(401).json({ error: "Agent authentication required" });
+      return;
+    }
+
+    const issuesSvc = issueService(db);
+    const rows = await issuesSvc.list(req.actor.companyId, {
+      assigneeAgentId: req.actor.agentId,
+      status: "todo,in_progress,blocked",
+    });
+
+    res.json(
+      rows.map((issue) => ({
+        id: issue.id,
+        identifier: issue.identifier,
+        title: issue.title,
+        status: issue.status,
+        priority: issue.priority,
+        projectId: issue.projectId,
+        goalId: issue.goalId,
+        parentId: issue.parentId,
+        updatedAt: issue.updatedAt,
+        activeRun: issue.activeRun,
+      })),
+    );
+  });
+
   router.get("/agents/:id", async (req, res) => {
     const id = req.params.id as string;
     const agent = await svc.getById(id);
@@ -912,6 +944,19 @@ export function agentRoutes(db: Db) {
       entityId: agent.id,
       details: { name: agent.name, role: agent.role },
     });
+
+    if (agent.budgetMonthlyCents > 0) {
+      await budgets.upsertPolicy(
+        companyId,
+        {
+          scopeType: "agent",
+          scopeId: agent.id,
+          amount: agent.budgetMonthlyCents,
+          windowKind: "calendar_month_utc",
+        },
+        actor.actorType === "user" ? actor.actorId : null,
+      );
+    }
 
     res.status(201).json(agent);
   });
@@ -1275,6 +1320,7 @@ export function agentRoutes(db: Db) {
       contextSnapshot: {
         triggeredBy: req.actor.type,
         actorId: req.actor.type === "agent" ? req.actor.agentId : req.actor.userId,
+        forceFreshSession: req.body.forceFreshSession === true,
       },
     });
 
@@ -1509,6 +1555,40 @@ export function agentRoutes(db: Db) {
     const offset = Number(req.query.offset ?? 0);
     const limitBytes = Number(req.query.limitBytes ?? 256000);
     const result = await heartbeat.readLog(runId, {
+      offset: Number.isFinite(offset) ? offset : 0,
+      limitBytes: Number.isFinite(limitBytes) ? limitBytes : 256000,
+    });
+
+    res.json(result);
+  });
+
+  router.get("/heartbeat-runs/:runId/workspace-operations", async (req, res) => {
+    const runId = req.params.runId as string;
+    const run = await heartbeat.getRun(runId);
+    if (!run) {
+      res.status(404).json({ error: "Heartbeat run not found" });
+      return;
+    }
+    assertCompanyAccess(req, run.companyId);
+
+    const context = asRecord(run.contextSnapshot);
+    const executionWorkspaceId = asNonEmptyString(context?.executionWorkspaceId);
+    const operations = await workspaceOperations.listForRun(runId, executionWorkspaceId);
+    res.json(redactCurrentUserValue(operations));
+  });
+
+  router.get("/workspace-operations/:operationId/log", async (req, res) => {
+    const operationId = req.params.operationId as string;
+    const operation = await workspaceOperations.getById(operationId);
+    if (!operation) {
+      res.status(404).json({ error: "Workspace operation not found" });
+      return;
+    }
+    assertCompanyAccess(req, operation.companyId);
+
+    const offset = Number(req.query.offset ?? 0);
+    const limitBytes = Number(req.query.limitBytes ?? 256000);
+    const result = await workspaceOperations.readLog(operationId, {
       offset: Number.isFinite(offset) ? offset : 0,
       limitBytes: Number.isFinite(limitBytes) ? limitBytes : 256000,
     });

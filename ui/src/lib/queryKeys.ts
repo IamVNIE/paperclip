@@ -27,11 +27,19 @@ export const queryKeys = {
     detail: (id: string) => ["issues", "detail", id] as const,
     comments: (issueId: string) => ["issues", "comments", issueId] as const,
     attachments: (issueId: string) => ["issues", "attachments", issueId] as const,
+    documents: (issueId: string) => ["issues", "documents", issueId] as const,
+    documentRevisions: (issueId: string, key: string) => ["issues", "document-revisions", issueId, key] as const,
     activity: (issueId: string) => ["issues", "activity", issueId] as const,
     runs: (issueId: string) => ["issues", "runs", issueId] as const,
     approvals: (issueId: string) => ["issues", "approvals", issueId] as const,
     liveRuns: (issueId: string) => ["issues", "live-runs", issueId] as const,
     activeRun: (issueId: string) => ["issues", "active-run", issueId] as const,
+    workProducts: (issueId: string) => ["issues", "work-products", issueId] as const,
+  },
+  executionWorkspaces: {
+    list: (companyId: string, filters?: Record<string, string | boolean | undefined>) =>
+      ["execution-workspaces", companyId, filters ?? {}] as const,
+    detail: (id: string) => ["execution-workspaces", "detail", id] as const,
   },
   projects: {
     list: (companyId: string) => ["projects", companyId] as const,
@@ -40,6 +48,9 @@ export const queryKeys = {
   goals: {
     list: (companyId: string) => ["goals", companyId] as const,
     detail: (id: string) => ["goals", "detail", id] as const,
+  },
+  budgets: {
+    overview: (companyId: string) => ["budgets", "overview", companyId] as const,
   },
   approvals: {
     list: (companyId: string, status?: string) =>
@@ -58,6 +69,7 @@ export const queryKeys = {
   },
   instance: {
     schedulerHeartbeats: ["instance", "scheduler-heartbeats"] as const,
+    experimentalSettings: ["instance", "experimental-settings"] as const,
   },
   health: ["health"] as const,
   secrets: {
@@ -69,10 +81,40 @@ export const queryKeys = {
   activity: (companyId: string) => ["activity", companyId] as const,
   costs: (companyId: string, from?: string, to?: string) =>
     ["costs", companyId, from, to] as const,
+  usageByProvider: (companyId: string, from?: string, to?: string) =>
+    ["usage-by-provider", companyId, from, to] as const,
+  usageByBiller: (companyId: string, from?: string, to?: string) =>
+    ["usage-by-biller", companyId, from, to] as const,
+  financeSummary: (companyId: string, from?: string, to?: string) =>
+    ["finance-summary", companyId, from, to] as const,
+  financeByBiller: (companyId: string, from?: string, to?: string) =>
+    ["finance-by-biller", companyId, from, to] as const,
+  financeByKind: (companyId: string, from?: string, to?: string) =>
+    ["finance-by-kind", companyId, from, to] as const,
+  financeEvents: (companyId: string, from?: string, to?: string, limit: number = 100) =>
+    ["finance-events", companyId, from, to, limit] as const,
+  usageWindowSpend: (companyId: string) =>
+    ["usage-window-spend", companyId] as const,
+  usageQuotaWindows: (companyId: string) =>
+    ["usage-quota-windows", companyId] as const,
   heartbeats: (companyId: string, agentId?: string) =>
     ["heartbeats", companyId, agentId] as const,
   runDetail: (runId: string) => ["heartbeat-run", runId] as const,
+  runWorkspaceOperations: (runId: string) => ["heartbeat-run", runId, "workspace-operations"] as const,
   liveRuns: (companyId: string) => ["live-runs", companyId] as const,
   runIssues: (runId: string) => ["run-issues", runId] as const,
   org: (companyId: string) => ["org", companyId] as const,
+  skills: {
+    available: ["skills", "available"] as const,
+  },
+  plugins: {
+    all: ["plugins"] as const,
+    examples: ["plugins", "examples"] as const,
+    detail: (pluginId: string) => ["plugins", pluginId] as const,
+    health: (pluginId: string) => ["plugins", pluginId, "health"] as const,
+    uiContributions: ["plugins", "ui-contributions"] as const,
+    config: (pluginId: string) => ["plugins", pluginId, "config"] as const,
+    dashboard: (pluginId: string) => ["plugins", pluginId, "dashboard"] as const,
+    logs: (pluginId: string) => ["plugins", pluginId, "logs"] as const,
+  },
 };

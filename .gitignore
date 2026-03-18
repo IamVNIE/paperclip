@@ -38,7 +38,16 @@ tmp/
 .claude/settings.local.json
 .paperclip-local/
 /.playwright-mcp
+/.idea/
+/.agents/
+
+# Doc maintenance cursor
+.doc-review-cursor
 
 # Playwright
 tests/e2e/test-results/
 tests/e2e/playwright-report/
+tests/release-smoke/test-results/
+tests/release-smoke/playwright-report/
+.superset/
+.claude/worktrees/

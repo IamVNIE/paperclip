@@ -369,6 +369,9 @@ function invalidateActivityQueries(
         queryClient.invalidateQueries({ queryKey: queryKeys.issues.comments(ref) });
         queryClient.invalidateQueries({ queryKey: queryKeys.issues.activity(ref) });
         queryClient.invalidateQueries({ queryKey: queryKeys.issues.runs(ref) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.issues.documents(ref) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.issues.attachments(ref) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.issues.approvals(ref) });
         queryClient.invalidateQueries({ queryKey: queryKeys.issues.liveRuns(ref) });
         queryClient.invalidateQueries({ queryKey: queryKeys.issues.activeRun(ref) });
       }
@@ -410,6 +413,10 @@ function invalidateActivityQueries(
 
   if (entityType === "cost_event") {
     queryClient.invalidateQueries({ queryKey: queryKeys.costs(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.usageByProvider(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.usageWindowSpend(companyId) });
+    // usageQuotaWindows is intentionally excluded: quota windows come from external provider
+    // apis on a 5-minute poll and do not change in response to cost events logged by agents
     return;
   }
 
