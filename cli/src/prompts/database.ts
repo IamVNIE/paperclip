@@ -16,7 +16,7 @@ export async function promptDatabase(current?: DatabaseConfig): Promise<Database
     embeddedPostgresPort: 54329,
     backup: {
       enabled: true,
-      intervalMinutes: 60,
+      intervalMinutes: 360,
       retentionDays: 30,
       dir: defaultBackupDir,
     },
@@ -112,8 +112,8 @@ export async function promptDatabase(current?: DatabaseConfig): Promise<Database
 
   const backupIntervalInput = await p.text({
     message: "Backup interval (minutes)",
-    defaultValue: String(base.backup.intervalMinutes || 60),
-    placeholder: "60",
+    defaultValue: String(base.backup.intervalMinutes || 360),
+    placeholder: "360",
     validate: (val) => {
       const n = Number(val);
       if (!Number.isInteger(n) || n < 1) return "Interval must be a positive integer";
@@ -149,7 +149,7 @@ export async function promptDatabase(current?: DatabaseConfig): Promise<Database
     embeddedPostgresPort,
     backup: {
       enabled: backupEnabled,
-      intervalMinutes: Number(backupIntervalInput || "60"),
+      intervalMinutes: Number(backupIntervalInput || "360"),
       retentionDays: Number(backupRetentionInput || "30"),
       dir: backupDirInput || defaultBackupDir,
     },

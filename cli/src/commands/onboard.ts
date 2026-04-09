@@ -152,7 +152,7 @@ function quickstartDefaultsFromEnv(): {
   const databaseBackupEnabled = parseBooleanFromEnv(process.env.PAPERCLIP_DB_BACKUP_ENABLED) ?? true;
   const databaseBackupIntervalMinutes = Math.max(
     1,
-    parseNumberFromEnv(process.env.PAPERCLIP_DB_BACKUP_INTERVAL_MINUTES) ?? 60,
+    parseNumberFromEnv(process.env.PAPERCLIP_DB_BACKUP_INTERVAL_MINUTES) ?? 360,
   );
   const databaseBackupRetentionDays = Math.max(
     1,

@@ -42,7 +42,7 @@ function defaultConfig(): PaperclipConfig {
       embeddedPostgresPort: 54329,
       backup: {
         enabled: true,
-        intervalMinutes: 60,
+        intervalMinutes: 360,
         retentionDays: 30,
         dir: resolveDefaultBackupDir(instanceId),
       },

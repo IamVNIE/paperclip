@@ -199,7 +199,7 @@ export function loadConfig(): Config {
     1,
     Number(process.env.PAPERCLIP_DB_BACKUP_INTERVAL_MINUTES) ||
       fileDatabaseBackup?.intervalMinutes ||
-      60,
+      360,
   );
   const databaseBackupRetentionDays = Math.max(
     1,
