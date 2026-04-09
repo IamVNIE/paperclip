@@ -1,15 +1,31 @@
-import { startTransition, useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
+import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { issuesApi } from "../api/issues";
 import { authApi } from "../api/auth";
+import { instanceSettingsApi } from "../api/instanceSettings";
 import { queryKeys } from "../lib/queryKeys";
 import { formatAssigneeUserLabel } from "../lib/assignees";
 import { groupBy } from "../lib/groupBy";
-import { formatDate, cn } from "../lib/utils";
-import { timeAgo } from "../lib/timeAgo";
+import {
+  DEFAULT_INBOX_ISSUE_COLUMNS,
+  getAvailableInboxIssueColumns,
+  loadInboxIssueColumns,
+  normalizeInboxIssueColumns,
+  resolveIssueWorkspaceName,
+  saveInboxIssueColumns,
+  type InboxIssueColumn,
+} from "../lib/inbox";
+import { cn } from "../lib/utils";
+import {
+  InboxIssueMetaLeading,
+  InboxIssueTrailingColumns,
+  IssueColumnPicker,
+  issueActivityText,
+  issueTrailingColumns,
+} from "./IssueColumns";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { EmptyState } from "./EmptyState";
@@ -23,12 +39,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search } from "lucide-react";
 import { KanbanBoard } from "./KanbanBoard";
-import type { Issue } from "@paperclipai/shared";
+import { buildIssueTree, countDescendants } from "../lib/issue-tree";
+import type { Issue, Project } from "@paperclipai/shared";
 
 /* ── Helpers ── */
 
 const statusOrder = ["in_progress", "todo", "backlog", "in_review", "blocked", "done", "cancelled"];
 const priorityOrder = ["critical", "high", "medium", "low"];
+const ISSUE_SEARCH_DEBOUNCE_MS = 150;
 
 function statusLabel(status: string): string {
   return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -44,9 +62,10 @@ export type IssueViewState = {
   projects: string[];
   sortField: "status" | "priority" | "title" | "created" | "updated";
   sortDir: "asc" | "desc";
-  groupBy: "status" | "priority" | "assignee" | "none";
+  groupBy: "status" | "priority" | "assignee" | "workspace" | "parent" | "none";
   viewMode: "list" | "board";
   collapsedGroups: string[];
+  collapsedParents: string[];
 };
 
 const defaultViewState: IssueViewState = {
@@ -60,6 +79,7 @@ const defaultViewState: IssueViewState = {
   groupBy: "none",
   viewMode: "list",
   collapsedGroups: [],
+  collapsedParents: [],
 };
 
 const quickFilterPresets = [
@@ -68,8 +88,6 @@ const quickFilterPresets = [
   { label: "Backlog", statuses: ["backlog"] },
   { label: "Done", statuses: ["done", "cancelled"] },
 ];
-const ISSUE_SEARCH_COMMIT_DELAY_MS = 150;
-
 function getViewState(key: string): IssueViewState {
   try {
     const raw = localStorage.getItem(key);
@@ -151,10 +169,7 @@ interface Agent {
   name: string;
 }
 
-interface ProjectOption {
-  id: string;
-  name: string;
-}
+type ProjectOption = Pick<Project, "id" | "name"> & Partial<Pick<Project, "color" | "workspaces" | "executionWorkspacePolicy" | "primaryWorkspace">>;
 
 interface IssuesListProps {
   issues: Issue[];
@@ -175,36 +190,42 @@ interface IssuesListProps {
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
 }
 
-interface IssuesSearchInputProps {
-  initialValue: string;
-  onValueCommitted: (value: string) => void;
-}
-
-function IssuesSearchInput({ initialValue, onValueCommitted }: IssuesSearchInputProps) {
-  const [value, setValue] = useState(initialValue);
-  const onValueCommittedRef = useRef(onValueCommitted);
-
-  useEffect(() => {
-    setValue(initialValue);
-  }, [initialValue]);
+function IssueSearchInput({
+  value,
+  onDebouncedChange,
+}: {
+  value: string;
+  onDebouncedChange?: (search: string) => void;
+}) {
+  const [draftValue, setDraftValue] = useState(value);
+  const lastCommittedValueRef = useRef(value);
 
   useEffect(() => {
-    onValueCommittedRef.current = onValueCommitted;
-  }, [onValueCommitted]);
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      onValueCommittedRef.current(value);
-    }, ISSUE_SEARCH_COMMIT_DELAY_MS);
-    return () => window.clearTimeout(timeoutId);
+    setDraftValue(value);
+    lastCommittedValueRef.current = value;
   }, [value]);
+
+  useEffect(() => {
+    if (!onDebouncedChange || draftValue === lastCommittedValueRef.current) return;
+
+    const timeoutId = window.setTimeout(() => {
+      lastCommittedValueRef.current = draftValue;
+      startTransition(() => {
+        onDebouncedChange(draftValue);
+      });
+    }, ISSUE_SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [draftValue, onDebouncedChange]);
 
   return (
     <div className="relative w-48 sm:w-64 md:w-80">
       <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
       <Input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
+        value={draftValue}
+        onChange={(e) => {
+          setDraftValue(e.target.value);
+        }}
         placeholder="Search issues..."
         className="pl-7 text-xs sm:text-sm"
         aria-label="Search issues"
@@ -235,7 +256,13 @@ export function IssuesList({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
+  const { data: experimentalSettings } = useQuery({
+    queryKey: queryKeys.instance.experimentalSettings,
+    queryFn: () => instanceSettingsApi.getExperimental(),
+    retry: false,
+  });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
+  const isolatedWorkspacesEnabled = experimentalSettings?.enableIsolatedWorkspaces === true;
 
   // Scope the storage key per company so folding/view state is independent across companies.
   const scopedKey = selectedCompanyId ? `${viewStateKey}:${selectedCompanyId}` : viewStateKey;
@@ -249,7 +276,9 @@ export function IssuesList({
   const [assigneePickerIssueId, setAssigneePickerIssueId] = useState<string | null>(null);
   const [assigneeSearch, setAssigneeSearch] = useState("");
   const [issueSearch, setIssueSearch] = useState(initialSearch ?? "");
-  const normalizedIssueSearch = issueSearch.trim();
+  const [visibleIssueColumns, setVisibleIssueColumns] = useState<InboxIssueColumn[]>(loadInboxIssueColumns);
+  const deferredIssueSearch = useDeferredValue(issueSearch);
+  const normalizedIssueSearch = deferredIssueSearch.trim().toLowerCase();
 
   useEffect(() => {
     setIssueSearch(initialSearch ?? "");
@@ -266,13 +295,6 @@ export function IssuesList({
     }
   }, [scopedKey, initialAssignees]);
 
-  const handleIssueSearchCommit = useCallback((nextSearch: string) => {
-    startTransition(() => {
-      setIssueSearch(nextSearch);
-    });
-    onSearchChange?.(nextSearch);
-  }, [onSearchChange]);
-
   const updateView = useCallback((patch: Partial<IssueViewState>) => {
     setViewState((prev) => {
       const next = { ...prev, ...patch };
@@ -280,6 +302,18 @@ export function IssuesList({
       return next;
     });
   }, [scopedKey]);
+
+  // Prune stale IDs from collapsedParents whenever the issue list changes.
+  // Deleted or reassigned issues leave orphan IDs in localStorage; this keeps
+  // the stored array bounded to only current parent IDs.
+  useEffect(() => {
+    const parentIds = new Set(issues.map((i) => i.parentId).filter(Boolean) as string[]);
+    const pruned = viewState.collapsedParents.filter((id) => parentIds.has(id));
+    if (pruned.length !== viewState.collapsedParents.length) {
+      updateView({ collapsedParents: pruned });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [issues]);
 
   const { data: searchedIssues = [] } = useQuery({
     queryKey: [
@@ -290,11 +324,102 @@ export function IssuesList({
     enabled: !!selectedCompanyId && normalizedIssueSearch.length > 0,
     placeholderData: (previousData) => previousData,
   });
+  const { data: executionWorkspaces = [] } = useQuery({
+    queryKey: selectedCompanyId
+      ? queryKeys.executionWorkspaces.list(selectedCompanyId)
+      : ["execution-workspaces", "__disabled__"],
+    queryFn: () => executionWorkspacesApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId && isolatedWorkspacesEnabled,
+  });
 
   const agentName = useCallback((id: string | null) => {
     if (!id || !agents) return null;
     return agents.find((a) => a.id === id)?.name ?? null;
   }, [agents]);
+
+  const projectById = useMemo(() => {
+    const map = new Map<string, { name: string; color: string | null }>();
+    for (const project of projects ?? []) {
+      map.set(project.id, { name: project.name, color: project.color ?? null });
+    }
+    return map;
+  }, [projects]);
+
+  const projectWorkspaceById = useMemo(() => {
+    const map = new Map<string, { name: string }>();
+    for (const project of projects ?? []) {
+      for (const workspace of project.workspaces ?? []) {
+        map.set(workspace.id, { name: workspace.name || project.name });
+      }
+    }
+    return map;
+  }, [projects]);
+
+  const defaultProjectWorkspaceIdByProjectId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const project of projects ?? []) {
+      const defaultWorkspaceId =
+        project.executionWorkspacePolicy?.defaultProjectWorkspaceId
+        ?? project.primaryWorkspace?.id
+        ?? null;
+      if (defaultWorkspaceId) map.set(project.id, defaultWorkspaceId);
+    }
+    return map;
+  }, [projects]);
+
+  const executionWorkspaceById = useMemo(() => {
+    const map = new Map<string, {
+      name: string;
+      mode: "shared_workspace" | "isolated_workspace" | "operator_branch" | "adapter_managed" | "cloud_sandbox";
+      projectWorkspaceId: string | null;
+    }>();
+    for (const workspace of executionWorkspaces) {
+      map.set(workspace.id, {
+        name: workspace.name,
+        mode: workspace.mode,
+        projectWorkspaceId: workspace.projectWorkspaceId ?? null,
+      });
+    }
+    return map;
+  }, [executionWorkspaces]);
+
+  const workspaceNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [workspaceId, workspace] of projectWorkspaceById) {
+      map.set(workspaceId, workspace.name);
+    }
+    for (const [workspaceId, workspace] of executionWorkspaceById) {
+      map.set(workspaceId, workspace.name);
+    }
+    return map;
+  }, [executionWorkspaceById, projectWorkspaceById]);
+
+  const visibleIssueColumnSet = useMemo(() => new Set(visibleIssueColumns), [visibleIssueColumns]);
+  const availableIssueColumns = useMemo(
+    () => getAvailableInboxIssueColumns(isolatedWorkspacesEnabled),
+    [isolatedWorkspacesEnabled],
+  );
+  const availableIssueColumnSet = useMemo(() => new Set(availableIssueColumns), [availableIssueColumns]);
+  const visibleTrailingIssueColumns = useMemo(
+    () => issueTrailingColumns.filter((column) => visibleIssueColumnSet.has(column) && availableIssueColumnSet.has(column)),
+    [availableIssueColumnSet, visibleIssueColumnSet],
+  );
+
+  const issueById = useMemo(() => {
+    const map = new Map<string, Issue>();
+    for (const issue of issues) {
+      map.set(issue.id, issue);
+    }
+    return map;
+  }, [issues]);
+
+  const issueTitleMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const issue of issues) {
+      map.set(issue.id, issue.identifier ? `${issue.identifier}: ${issue.title}` : issue.title);
+    }
+    return map;
+  }, [issues]);
 
   const filtered = useMemo(() => {
     const sourceIssues = normalizedIssueSearch.length > 0 ? searchedIssues : issues;
@@ -326,6 +451,36 @@ export function IssuesList({
         .filter((p) => groups[p]?.length)
         .map((p) => ({ key: p, label: statusLabel(p), items: groups[p]! }));
     }
+    if (viewState.groupBy === "workspace") {
+      const groups = groupBy(filtered, (i) => i.projectWorkspaceId ?? "__no_workspace");
+      return Object.keys(groups)
+        .sort((a, b) => {
+          // Groups with items first, "no workspace" last
+          if (a === "__no_workspace") return 1;
+          if (b === "__no_workspace") return -1;
+          return (groups[b]?.length ?? 0) - (groups[a]?.length ?? 0);
+        })
+        .map((key) => ({
+          key,
+          label: key === "__no_workspace" ? "No Workspace" : (workspaceNameMap.get(key) ?? key.slice(0, 8)),
+          items: groups[key]!,
+        }));
+    }
+    if (viewState.groupBy === "parent") {
+      const groups = groupBy(filtered, (i) => i.parentId ?? "__no_parent");
+      return Object.keys(groups)
+        .sort((a, b) => {
+          // Groups with items first, "no parent" last
+          if (a === "__no_parent") return 1;
+          if (b === "__no_parent") return -1;
+          return (groups[b]?.length ?? 0) - (groups[a]?.length ?? 0);
+        })
+        .map((key) => ({
+          key,
+          label: key === "__no_parent" ? "No Parent" : (issueTitleMap.get(key) ?? key.slice(0, 8)),
+          items: groups[key]!,
+        }));
+    }
     // assignee
     const groups = groupBy(
       filtered,
@@ -341,9 +496,9 @@ export function IssuesList({
             : (agentName(key) ?? key.slice(0, 8)),
       items: groups[key]!,
     }));
-  }, [filtered, viewState.groupBy, agents, agentName, currentUserId]);
+  }, [filtered, viewState.groupBy, agents, agentName, currentUserId, workspaceNameMap, issueTitleMap]);
 
-  const newIssueDefaults = (groupKey?: string) => {
+  const newIssueDefaults = useCallback((groupKey?: string) => {
     const defaults: Record<string, string> = {};
     if (projectId) defaults.projectId = projectId;
     if (groupKey) {
@@ -353,15 +508,33 @@ export function IssuesList({
         if (groupKey.startsWith("__user:")) defaults.assigneeUserId = groupKey.slice("__user:".length);
         else defaults.assigneeAgentId = groupKey;
       }
+      else if (viewState.groupBy === "parent" && groupKey !== "__no_parent") {
+        defaults.parentId = groupKey;
+      }
     }
     return defaults;
-  };
+  }, [projectId, viewState.groupBy]);
 
-  const assignIssue = (issueId: string, assigneeAgentId: string | null, assigneeUserId: string | null = null) => {
+  const setIssueColumns = useCallback((next: InboxIssueColumn[]) => {
+    const normalized = normalizeInboxIssueColumns(next);
+    setVisibleIssueColumns(normalized);
+    saveInboxIssueColumns(normalized);
+  }, []);
+
+  const toggleIssueColumn = useCallback((column: InboxIssueColumn, enabled: boolean) => {
+    if (enabled) {
+      setIssueColumns([...visibleIssueColumns, column]);
+      return;
+    }
+    setIssueColumns(visibleIssueColumns.filter((value) => value !== column));
+  }, [setIssueColumns, visibleIssueColumns]);
+
+  const assignIssue = useCallback((issueId: string, assigneeAgentId: string | null, assigneeUserId: string | null = null) => {
     onUpdateIssue(issueId, { assigneeAgentId, assigneeUserId });
     setAssigneePickerIssueId(null);
     setAssigneeSearch("");
-  };
+  }, [onUpdateIssue]);
+
 
   return (
     <div className="space-y-4">
@@ -372,9 +545,12 @@ export function IssuesList({
             <Plus className="h-4 w-4 sm:mr-1" />
             <span className="hidden sm:inline">New Issue</span>
           </Button>
-          <IssuesSearchInput
-            initialValue={initialSearch ?? ""}
-            onValueCommitted={handleIssueSearchCommit}
+          <IssueSearchInput
+            value={issueSearch}
+            onDebouncedChange={(nextSearch) => {
+              setIssueSearch(nextSearch);
+              onSearchChange?.(nextSearch);
+            }}
           />
         </div>
 
@@ -396,6 +572,14 @@ export function IssuesList({
               <Columns3 className="h-3.5 w-3.5" />
             </button>
           </div>
+
+          <IssueColumnPicker
+            availableColumns={availableIssueColumns}
+            visibleColumnSet={visibleIssueColumnSet}
+            onToggleColumn={toggleIssueColumn}
+            onResetColumns={() => setIssueColumns(DEFAULT_INBOX_ISSUE_COLUMNS)}
+            title="Choose which issue columns stay visible"
+          />
 
           {/* Filter */}
           <Popover>
@@ -626,6 +810,8 @@ export function IssuesList({
                     ["status", "Status"],
                     ["priority", "Priority"],
                     ["assignee", "Assignee"],
+                    ["workspace", "Workspace"],
+                    ["parent", "Parent Issue"],
                     ["none", "None"],
                   ] as const).map(([value, label]) => (
                     <button
@@ -697,188 +883,201 @@ export function IssuesList({
               </div>
             )}
             <CollapsibleContent>
-              {group.items.map((issue) => (
-                <IssueRow
-                  key={issue.id}
-                  issue={issue}
-                  issueLinkState={issueLinkState}
-                  desktopLeadingSpacer
-                  mobileLeading={(
-                    <span
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                    >
-                      <StatusIcon
-                        status={issue.status}
-                        onChange={(s) => onUpdateIssue(issue.id, { status: s })}
-                      />
-                    </span>
-                  )}
-                  desktopMetaLeading={(
-                    <>
-                      <span
-                        className="hidden shrink-0 sm:inline-flex"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                      >
-                        <StatusIcon
-                          status={issue.status}
-                          onChange={(s) => onUpdateIssue(issue.id, { status: s })}
-                        />
-                      </span>
-                      <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                        {issue.identifier ?? issue.id.slice(0, 8)}
-                      </span>
-                      {liveIssueIds?.has(issue.id) && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5 sm:gap-1.5 sm:px-2">
-                          <span className="relative flex h-2 w-2">
-                            <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
-                            <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+              {(() => {
+                const { roots, childMap } = buildIssueTree(group.items);
+
+                const renderIssueRow = (issue: Issue, depth: number) => {
+                  const children = childMap.get(issue.id) ?? [];
+                  const hasChildren = children.length > 0;
+                  const totalDescendants = hasChildren ? countDescendants(issue.id, childMap) : 0;
+                  const isExpanded = !viewState.collapsedParents.includes(issue.id);
+                  const issueProject = issue.projectId ? projectById.get(issue.projectId) ?? null : null;
+                  const parentIssue = issue.parentId ? issueById.get(issue.parentId) ?? null : null;
+                  const toggleCollapse = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    updateView({
+                      collapsedParents: isExpanded
+                        ? [...viewState.collapsedParents, issue.id]
+                        : viewState.collapsedParents.filter((id) => id !== issue.id),
+                    });
+                  };
+
+                  return (
+                    <div key={issue.id} style={depth > 0 ? { paddingLeft: `${depth * 16}px` } : undefined}>
+                      <IssueRow
+                        issue={issue}
+                        issueLinkState={issueLinkState}
+                        titleSuffix={hasChildren && !isExpanded ? (
+                          <span className="ml-1.5 text-xs text-muted-foreground">
+                            ({totalDescendants} sub-task{totalDescendants !== 1 ? "s" : ""})
                           </span>
-                          <span className="hidden text-[11px] font-medium text-blue-600 dark:text-blue-400 sm:inline">
-                            Live
-                          </span>
-                        </span>
-                      )}
-                    </>
-                  )}
-                  mobileMeta={timeAgo(issue.updatedAt)}
-                  desktopTrailing={(
-                    <>
-                      {(issue.labels ?? []).length > 0 && (
-                        <span className="hidden items-center gap-1 overflow-hidden md:flex md:max-w-[240px]">
-                          {(issue.labels ?? []).slice(0, 3).map((label) => (
-                            <span
-                              key={label.id}
-                              className="inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
-                              style={{
-                                borderColor: label.color,
-                                color: pickTextColorForPillBg(label.color, 0.12),
-                                backgroundColor: `${label.color}1f`,
-                              }}
-                            >
-                              {label.name}
-                            </span>
-                          ))}
-                          {(issue.labels ?? []).length > 3 && (
-                            <span className="text-[10px] text-muted-foreground">
-                              +{(issue.labels ?? []).length - 3}
-                            </span>
-                          )}
-                        </span>
-                      )}
-                      <Popover
-                        open={assigneePickerIssueId === issue.id}
-                        onOpenChange={(open) => {
-                          setAssigneePickerIssueId(open ? issue.id : null);
-                          if (!open) setAssigneeSearch("");
-                        }}
-                      >
-                        <PopoverTrigger asChild>
-                          <button
-                            className="flex w-[180px] shrink-0 items-center rounded-md px-2 py-1 transition-colors hover:bg-accent/50"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                            }}
-                          >
-                            {issue.assigneeAgentId && agentName(issue.assigneeAgentId) ? (
-                              <Identity name={agentName(issue.assigneeAgentId)!} size="sm" />
-                            ) : issue.assigneeUserId ? (
-                              <span className="inline-flex items-center gap-1.5 text-xs">
-                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
-                                  <User className="h-3 w-3" />
-                                </span>
-                                {formatAssigneeUserLabel(issue.assigneeUserId, currentUserId) ?? "User"}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
-                                  <User className="h-3 w-3" />
-                                </span>
-                                Assignee
-                              </span>
-                            )}
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          className="w-56 p-1"
-                          align="end"
-                          onClick={(e) => e.stopPropagation()}
-                          onPointerDownOutside={() => setAssigneeSearch("")}
-                        >
-                          <input
-                            className="mb-1 w-full border-b border-border bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/50"
-                            placeholder="Search assignees..."
-                            value={assigneeSearch}
-                            onChange={(e) => setAssigneeSearch(e.target.value)}
-                            autoFocus
-                          />
-                          <div className="max-h-48 overflow-y-auto overscroll-contain">
-                            <button
-                              className={cn(
-                                "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50",
-                                !issue.assigneeAgentId && !issue.assigneeUserId && "bg-accent",
-                              )}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                assignIssue(issue.id, null, null);
-                              }}
-                            >
-                              No assignee
+                        ) : undefined}
+                        mobileLeading={
+                          hasChildren ? (
+                            <button type="button" onClick={toggleCollapse}>
+                              <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", isExpanded && "rotate-90")} />
                             </button>
-                            {currentUserId && (
+                          ) : (
+                            <span onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                              <StatusIcon status={issue.status} onChange={(s) => onUpdateIssue(issue.id, { status: s })} />
+                            </span>
+                          )
+                        }
+                        desktopMetaLeading={(
+                          <>
+                            {hasChildren ? (
                               <button
-                                className={cn(
-                                  "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/50",
-                                  issue.assigneeUserId === currentUserId && "bg-accent",
-                                )}
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  assignIssue(issue.id, null, currentUserId);
-                                }}
+                                type="button"
+                                className="hidden shrink-0 items-center sm:inline-flex"
+                                onClick={toggleCollapse}
                               >
-                                <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                <span>Me</span>
+                                <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", isExpanded && "rotate-90")} />
                               </button>
+                            ) : (
+                              <span className="hidden w-3.5 shrink-0 sm:block" />
                             )}
-                            {(agents ?? [])
-                              .filter((agent) => {
-                                if (!assigneeSearch.trim()) return true;
-                                return agent.name
-                                  .toLowerCase()
-                                  .includes(assigneeSearch.toLowerCase());
-                              })
-                              .map((agent) => (
-                                <button
-                                  key={agent.id}
-                                  className={cn(
-                                    "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/50",
-                                    issue.assigneeAgentId === agent.id && "bg-accent",
-                                  )}
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    assignIssue(issue.id, agent.id, null);
+                            <InboxIssueMetaLeading
+                              issue={issue}
+                              isLive={liveIssueIds?.has(issue.id) === true}
+                              showStatus={visibleIssueColumnSet.has("status") && availableIssueColumnSet.has("status")}
+                              showIdentifier={visibleIssueColumnSet.has("id") && availableIssueColumnSet.has("id")}
+                              statusSlot={(
+                                <span onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                  <StatusIcon status={issue.status} onChange={(s) => onUpdateIssue(issue.id, { status: s })} />
+                                </span>
+                              )}
+                            />
+                          </>
+                        )}
+                        mobileMeta={issueActivityText(issue).toLowerCase()}
+                        desktopTrailing={(
+                          visibleTrailingIssueColumns.length > 0 ? (
+                            <InboxIssueTrailingColumns
+                              issue={issue}
+                              columns={visibleTrailingIssueColumns}
+                              projectName={issueProject?.name ?? null}
+                              projectColor={issueProject?.color ?? null}
+                              workspaceName={resolveIssueWorkspaceName(issue, {
+                                executionWorkspaceById,
+                                projectWorkspaceById,
+                                defaultProjectWorkspaceIdByProjectId,
+                              })}
+                              assigneeName={agentName(issue.assigneeAgentId)}
+                              currentUserId={currentUserId}
+                              parentIdentifier={parentIssue?.identifier ?? null}
+                              parentTitle={parentIssue?.title ?? null}
+                              assigneeContent={(
+                                <Popover
+                                  open={assigneePickerIssueId === issue.id}
+                                  onOpenChange={(open) => {
+                                    setAssigneePickerIssueId(open ? issue.id : null);
+                                    if (!open) setAssigneeSearch("");
                                   }}
                                 >
-                                  <Identity name={agent.name} size="sm" className="min-w-0" />
-                                </button>
-                              ))}
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </>
-                  )}
-                  trailingMeta={formatDate(issue.createdAt)}
-                />
-              ))}
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      className="flex w-[180px] shrink-0 items-center rounded-md px-2 py-1 transition-colors hover:bg-accent/50"
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    >
+                                      {issue.assigneeAgentId && agentName(issue.assigneeAgentId) ? (
+                                        <Identity name={agentName(issue.assigneeAgentId)!} size="sm" />
+                                      ) : issue.assigneeUserId ? (
+                                        <span className="inline-flex items-center gap-1.5 text-xs">
+                                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
+                                            <User className="h-3 w-3" />
+                                          </span>
+                                          {formatAssigneeUserLabel(issue.assigneeUserId, currentUserId) ?? "User"}
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
+                                            <User className="h-3 w-3" />
+                                          </span>
+                                          Assignee
+                                        </span>
+                                      )}
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent
+                                    className="w-56 p-1"
+                                    align="end"
+                                    onClick={(e) => e.stopPropagation()}
+                                    onPointerDownOutside={() => setAssigneeSearch("")}
+                                  >
+                                    <input
+                                      className="mb-1 w-full border-b border-border bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/50"
+                                      placeholder="Search assignees..."
+                                      value={assigneeSearch}
+                                      onChange={(e) => setAssigneeSearch(e.target.value)}
+                                      autoFocus
+                                    />
+                                    <div className="max-h-48 overflow-y-auto overscroll-contain">
+                                      <button
+                                        className={cn(
+                                          "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50",
+                                          !issue.assigneeAgentId && !issue.assigneeUserId && "bg-accent",
+                                        )}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          assignIssue(issue.id, null, null);
+                                        }}
+                                      >
+                                        No assignee
+                                      </button>
+                                      {currentUserId && (
+                                        <button
+                                          className={cn(
+                                            "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/50",
+                                            issue.assigneeUserId === currentUserId && "bg-accent",
+                                          )}
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            assignIssue(issue.id, null, currentUserId);
+                                          }}
+                                        >
+                                          <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                          <span>Me</span>
+                                        </button>
+                                      )}
+                                      {(agents ?? [])
+                                        .filter((agent) => {
+                                          if (!assigneeSearch.trim()) return true;
+                                          return agent.name.toLowerCase().includes(assigneeSearch.toLowerCase());
+                                        })
+                                        .map((agent) => (
+                                          <button
+                                            key={agent.id}
+                                            className={cn(
+                                              "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/50",
+                                              issue.assigneeAgentId === agent.id && "bg-accent",
+                                            )}
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              assignIssue(issue.id, agent.id, null);
+                                            }}
+                                          >
+                                            <Identity name={agent.name} size="sm" className="min-w-0" />
+                                          </button>
+                                        ))}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              )}
+                            />
+                          ) : undefined
+                        )}
+                      />
+                      {hasChildren && isExpanded && children.map((child) => renderIssueRow(child, depth + 1))}
+                    </div>
+                  );
+                };
+
+                return roots.map((issue) => renderIssueRow(issue, 0));
+              })()}
             </CollapsibleContent>
           </Collapsible>
         ))

@@ -5,7 +5,13 @@ import { fileURLToPath } from "node:url";
 import { resolveServerDevWatchIgnorePaths } from "../src/dev-watch-ignore.ts";
 
 const require = createRequire(import.meta.url);
-const tsxCliPath = path.resolve(path.dirname(require.resolve("tsx")), "cli.mjs");
+try{
+  const tsxCliPath = path.resolve(path.dirname(require.resolve("tsx")), "cli.mjs");
+} catch {
+  const tsxCliPath = require.resolve("tsx/cli");
+}
+
+
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ignoreArgs = resolveServerDevWatchIgnorePaths(serverRoot).flatMap((ignorePath) => ["--exclude", ignorePath]);
 
