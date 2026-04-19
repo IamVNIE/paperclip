@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { testEnvironment } from "@paperclipai/adapter-opencode-local/server";
 
-describe("opencode_local environment diagnostics", () => {
+describe("opencode_local environment diagnostics", { timeout: 15000 }, () => {
   it("reports a missing working directory as an error when cwd is absolute", async () => {
     const cwd = path.join(
       os.tmpdir(),

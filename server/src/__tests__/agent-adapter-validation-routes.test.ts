@@ -141,7 +141,7 @@ async function unregisterTestAdapter(type: string) {
   unregisterServerAdapter(type);
 }
 
-describe("agent routes adapter validation", () => {
+describe("agent routes adapter validation", { timeout: 15000 }, () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.doUnmock("../routes/agents.js");

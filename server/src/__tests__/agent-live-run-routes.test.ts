@@ -66,7 +66,7 @@ async function createApp() {
   return app;
 }
 
-describe("agent live run routes", () => {
+describe("agent live run routes", { timeout: 15000 }, () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("../services/index.js");

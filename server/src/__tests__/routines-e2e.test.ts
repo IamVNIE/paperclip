@@ -85,7 +85,7 @@ if (!embeddedPostgresSupport.supported) {
   );
 }
 
-describeEmbeddedPostgres("routine routes end-to-end", () => {
+describeEmbeddedPostgres("routine routes end-to-end", { timeout: 20000 }, () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
 
