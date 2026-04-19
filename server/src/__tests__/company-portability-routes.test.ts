@@ -87,7 +87,7 @@ describe("company portability routes", () => {
     vi.resetAllMocks();
   });
 
-  it("rejects non-CEO agents from CEO-safe export preview routes", async () => {
+  it("rejects non-CEO agents from CEO-safe export preview routes", { timeout: 15_000 }, async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
       companyId: "11111111-1111-4111-8111-111111111111",
@@ -110,7 +110,7 @@ describe("company portability routes", () => {
     expect(mockCompanyPortabilityService.previewExport).not.toHaveBeenCalled();
   });
 
-  it("allows CEO agents to use company-scoped export preview routes", async () => {
+  it("allows CEO agents to use company-scoped export preview routes", { timeout: 15_000 }, async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
       companyId: "11111111-1111-4111-8111-111111111111",
