@@ -1,9 +1,14 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
 import { onboard } from "../commands/onboard.js";
 import type { PaperclipConfig } from "../config/schema.js";
+
+vi.mock("node:child_process", () => ({
+  execFileSync: vi.fn(),
+}));
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -139,8 +144,11 @@ describe("onboard", () => {
   });
 
   it("keeps tailnet quickstart on loopback until tailscale is available", async () => {
+    // Mock execFileSync to throw an error, simulating Tailscale not being available
+    (execFileSync as any).mockImplementation(() => {
+      throw new Error("Tailscale not available");
+    });
     const configPath = createFreshConfigPath();
-    delete process.env.PAPERCLIP_TAILNET_BIND_HOST;
 
     await onboard({ config: configPath, yes: true, invokedByRun: true, bind: "tailnet" });
 

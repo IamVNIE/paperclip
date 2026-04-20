@@ -4020,7 +4020,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
 
     if (!targetCompany) throw notFound("Target company not found");
 
-    if (include.company) {
+    if (include.company && (companyAction === "created" || mode === "board_full")) {
       const logoPath = sourceManifest.company?.logoPath ?? null;
       if (!logoPath) {
         const cleared = await companies.update(targetCompany.id, { logoAssetId: null });

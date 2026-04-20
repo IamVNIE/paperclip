@@ -3,6 +3,7 @@ import { Link } from "@/lib/router";
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -14,6 +15,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import {
   SortableContext,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -69,7 +71,7 @@ function KanbanColumn({
     <div className={`flex flex-col shrink-0 transition-[width,min-width] ${isEmpty && !isOver ? "min-w-[48px] w-[48px]" : "min-w-[260px] w-[260px]"}`}>
       <div className={`flex items-center gap-2 px-2 py-2 mb-1 ${isEmpty && !isOver ? "justify-center" : ""}`}>
         <StatusIcon status={status} />
-        {(!isEmpty || isOver) && (
+        {(!isEmpty || isOver) ? (
           <>
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {statusLabel(status)}
@@ -78,6 +80,8 @@ function KanbanColumn({
               {issues.length}
             </span>
           </>
+        ) : (
+          <span className="sr-only">{statusLabel(status)} (empty)</span>
         )}
       </div>
       <div
@@ -196,7 +200,8 @@ export function KanbanBoard({
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const columnIssues = useMemo(() => {

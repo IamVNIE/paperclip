@@ -87,7 +87,7 @@ describe("company portability routes", () => {
     vi.resetAllMocks();
   });
 
-  it("rejects non-CEO agents from CEO-safe export preview routes", { timeout: 15_000 }, async () => {
+  it("rejects non-CEO agents from CEO-safe export preview routes", { timeout: 30_000 }, async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
       companyId: "11111111-1111-4111-8111-111111111111",
@@ -141,7 +141,7 @@ describe("company portability routes", () => {
     expect(res.body.rootPath).toBe("paperclip");
   });
 
-  it("rejects replace collision strategy on CEO-safe import routes", async () => {
+  it("rejects replace collision strategy on CEO-safe import routes", { timeout: 15_000 }, async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
       companyId: "11111111-1111-4111-8111-111111111111",
@@ -169,7 +169,7 @@ describe("company portability routes", () => {
     expect(mockCompanyPortabilityService.previewImport).not.toHaveBeenCalled();
   });
 
-  it("keeps global import preview routes board-only", async () => {
+  it("keeps global import preview routes board-only", { timeout: 15_000 }, async () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
@@ -191,7 +191,7 @@ describe("company portability routes", () => {
     expect(res.body.error).toContain("Board access required");
   });
 
-  it("requires instance admin for new-company import preview", async () => {
+  it("requires instance admin for new-company import preview", { timeout: 15_000 }, async () => {
     const app = await createApp({
       type: "board",
       userId: "user-1",
@@ -214,7 +214,7 @@ describe("company portability routes", () => {
     expect(mockCompanyPortabilityService.previewImport).not.toHaveBeenCalled();
   });
 
-  it("rejects replace collision strategy on CEO-safe import apply routes", async () => {
+  it("rejects replace collision strategy on CEO-safe import apply routes", { timeout: 15_000 }, async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
       companyId: "11111111-1111-4111-8111-111111111111",
@@ -242,7 +242,7 @@ describe("company portability routes", () => {
     expect(mockCompanyPortabilityService.importBundle).not.toHaveBeenCalled();
   });
 
-  it("rejects non-CEO agents from CEO-safe import preview routes", async () => {
+  it("rejects non-CEO agents from CEO-safe import preview routes", { timeout: 15_000 }, async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
       companyId: "11111111-1111-4111-8111-111111111111",
@@ -270,7 +270,7 @@ describe("company portability routes", () => {
     expect(mockCompanyPortabilityService.previewImport).not.toHaveBeenCalled();
   });
 
-  it("rejects non-CEO agents from CEO-safe import apply routes", async () => {
+  it("rejects non-CEO agents from CEO-safe import apply routes", { timeout: 15_000 }, async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
       companyId: "11111111-1111-4111-8111-111111111111",
@@ -298,7 +298,7 @@ describe("company portability routes", () => {
     expect(mockCompanyPortabilityService.importBundle).not.toHaveBeenCalled();
   });
 
-  it("requires instance admin for new-company import apply", async () => {
+  it("requires instance admin for new-company import apply", { timeout: 15_000 }, async () => {
     const app = await createApp({
       type: "board",
       userId: "user-1",

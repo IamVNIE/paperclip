@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useId, createContext, useContext } from "react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -65,6 +65,15 @@ export const adapterLabels = getAdapterLabels();
 
 export const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
 
+/* ---- Field label id context (for label-trigger association in custom dropdowns) ---- */
+
+const FieldLabelIdContext = createContext<string | undefined>(undefined);
+
+/** Returns the id of the nearest Field's label element. Use as `aria-labelledby` on custom dropdown triggers. */
+export function useFieldLabelId(): string | undefined {
+  return useContext(FieldLabelIdContext);
+}
+
 /* ---- Primitive components ---- */
 
 export function HintIcon({ text }: { text: string }) {
@@ -83,14 +92,17 @@ export function HintIcon({ text }: { text: string }) {
 }
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  const labelId = useId();
   return (
-    <div>
-      <div className="flex items-center gap-1.5 mb-1">
-        <label className="text-xs text-muted-foreground">{label}</label>
-        {hint && <HintIcon text={hint} />}
+    <FieldLabelIdContext.Provider value={labelId}>
+      <div>
+        <div className="flex items-center gap-1.5 mb-1">
+          <label id={labelId} className="text-xs text-muted-foreground">{label}</label>
+          {hint && <HintIcon text={hint} />}
+        </div>
+        {children}
       </div>
-      {children}
-    </div>
+    </FieldLabelIdContext.Provider>
   );
 }
 
@@ -451,13 +463,16 @@ export function ChoosePathButton() {
  * Label + input rendered on the same line (inline layout for compact fields).
  */
 export function InlineField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  const labelId = useId();
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-1.5 shrink-0">
-        <label className="text-xs text-muted-foreground">{label}</label>
-        {hint && <HintIcon text={hint} />}
+    <FieldLabelIdContext.Provider value={labelId}>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <label id={labelId} className="text-xs text-muted-foreground">{label}</label>
+          {hint && <HintIcon text={hint} />}
+        </div>
+        <div className="w-24 ml-auto">{children}</div>
       </div>
-      <div className="w-24 ml-auto">{children}</div>
-    </div>
+    </FieldLabelIdContext.Provider>
   );
 }

@@ -77,9 +77,13 @@ export function RunActivityChart({ runs }: { runs: HeartbeatRun[] }) {
 
   if (!hasData) return <p className="text-xs text-muted-foreground">No runs yet</p>;
 
+  const totalSucceeded = Array.from(grouped.values()).reduce((s, v) => s + v.succeeded, 0);
+  const totalFailed = Array.from(grouped.values()).reduce((s, v) => s + v.failed, 0);
+  const runChartLabel = `Run activity over last 14 days: ${totalSucceeded} succeeded, ${totalFailed} failed`;
+
   return (
     <div>
-      <div className="flex items-end gap-[3px] h-20">
+      <div role="img" aria-label={runChartLabel} className="flex items-end gap-[3px] h-20">
         {days.map(day => {
           const entry = grouped.get(day)!;
           const total = entry.succeeded + entry.failed + entry.other;
@@ -129,9 +133,16 @@ export function PriorityChart({ issues }: { issues: { priority: string; createdA
 
   if (!hasData) return <p className="text-xs text-muted-foreground">No issues</p>;
 
+  const prioritySummary = priorityOrder
+    .map(p => ({ p, count: Array.from(grouped.values()).reduce((s, v) => s + (v[p] ?? 0), 0) }))
+    .filter(({ count }) => count > 0)
+    .map(({ p, count }) => `${count} ${p}`)
+    .join(", ");
+  const priorityChartLabel = `Issues by priority over last 14 days: ${prioritySummary}`;
+
   return (
     <div>
-      <div className="flex items-end gap-[3px] h-20">
+      <div role="img" aria-label={priorityChartLabel} className="flex items-end gap-[3px] h-20">
         {days.map(day => {
           const entry = grouped.get(day)!;
           const total = Object.values(entry).reduce((a, b) => a + b, 0);
@@ -196,9 +207,16 @@ export function IssueStatusChart({ issues }: { issues: { status: string; created
 
   if (!hasData) return <p className="text-xs text-muted-foreground">No issues</p>;
 
+  const statusSummary = statusOrder
+    .map(s => ({ label: statusLabels[s] ?? s, count: Array.from(grouped.values()).reduce((sum, v) => sum + (v[s] ?? 0), 0) }))
+    .filter(({ count }) => count > 0)
+    .map(({ label, count }) => `${count} ${label}`)
+    .join(", ");
+  const statusChartLabel = `Issues by status over last 14 days: ${statusSummary}`;
+
   return (
     <div>
-      <div className="flex items-end gap-[3px] h-20">
+      <div role="img" aria-label={statusChartLabel} className="flex items-end gap-[3px] h-20">
         {days.map(day => {
           const entry = grouped.get(day)!;
           const total = Object.values(entry).reduce((a, b) => a + b, 0);
@@ -239,9 +257,14 @@ export function SuccessRateChart({ runs }: { runs: HeartbeatRun[] }) {
   const hasData = Array.from(grouped.values()).some(v => v.total > 0);
   if (!hasData) return <p className="text-xs text-muted-foreground">No runs yet</p>;
 
+  const srTotalRuns = Array.from(grouped.values()).reduce((s, v) => s + v.total, 0);
+  const srTotalSucceeded = Array.from(grouped.values()).reduce((s, v) => s + v.succeeded, 0);
+  const srOverallRate = srTotalRuns > 0 ? Math.round((srTotalSucceeded / srTotalRuns) * 100) : 0;
+  const successRateLabel = `Success rate over last 14 days: ${srOverallRate}% (${srTotalSucceeded} of ${srTotalRuns} runs succeeded)`;
+
   return (
     <div>
-      <div className="flex items-end gap-[3px] h-20">
+      <div role="img" aria-label={successRateLabel} className="flex items-end gap-[3px] h-20">
         {days.map(day => {
           const entry = grouped.get(day)!;
           const rate = entry.total > 0 ? entry.succeeded / entry.total : 0;
