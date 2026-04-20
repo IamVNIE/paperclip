@@ -10,5 +10,8 @@ export default defineConfig({
       "ui",
       "cli",
     ],
+    // Coverage instrumentation adds significant overhead; use serialized execution
+    maxWorkers: process.env.COVERAGE || process.env.VITEST_MAX_WORKERS ? 1 : 2,
+    minWorkers: 1,
   },
 });
