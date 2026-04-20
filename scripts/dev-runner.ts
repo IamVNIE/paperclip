@@ -14,6 +14,8 @@ import {
   touchLocalServiceRegistryRecord,
   writeLocalServiceRegistryRecord,
 } from "../server/src/services/local-service-supervisor.ts";
+import { killStaleEmbeddedPostgresOnWindows } from "../packages/db/src/migration-runtime.ts";
+import { resolveDatabaseTarget } from "../packages/db/src/runtime-config.ts";
 
 // Keep these values local so the dev runner can boot from the server package's
 // tsx context without requiring workspace package resolution first.
@@ -455,8 +457,22 @@ async function maybePreflightMigrations(options: { interactive?: boolean; autoAp
   const autoApply = options.autoApply ?? env.PAPERCLIP_MIGRATION_AUTO_APPLY === "true";
   const exitOnDecline = options.exitOnDecline ?? mode === "watch";
 
-  console.log("[paperclip] checking database migrations (may take ~30s to boot embedded postgres)...");
-  const payload = await refreshPendingMigrations();
+  console.log("[paperclip] checking database migrations (embedded postgres cold start ~30s)...");
+  const startedAt = Date.now();
+  const heartbeat = setInterval(() => {
+    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+    console.log(`[paperclip] ...still waiting on postgres (${elapsed}s elapsed)`);
+  }, 10_000);
+  let payload: Awaited<ReturnType<typeof refreshPendingMigrations>>;
+  try {
+    payload = await refreshPendingMigrations();
+  } finally {
+    clearInterval(heartbeat);
+  }
+  const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+  console.log(
+    `[paperclip] migration check done in ${elapsedSec}s (status=${payload.status ?? "unknown"}, pending=${pendingMigrations.length})`,
+  );
   if (payload.status !== "needsMigrations" || pendingMigrations.length === 0) {
     return;
   }
@@ -614,11 +630,13 @@ async function startServerChild() {
       if (restartInFlight || expected || shuttingDown) {
         return;
       }
-      if (signal) {
-        exitForSignal(signal);
-        return;
-      }
-      process.exit(code ?? 0);
+      void cleanupEmbeddedPostgresOrphans().finally(() => {
+        if (signal) {
+          exitForSignal(signal);
+          return;
+        }
+        process.exit(code ?? 0);
+      });
     });
   });
 
@@ -687,6 +705,19 @@ function clearDevIntervals() {
   }
 }
 
+async function cleanupEmbeddedPostgresOrphans(): Promise<void> {
+  try {
+    const target = resolveDatabaseTarget();
+    if (target.mode !== "embedded-postgres") return;
+    const killed = await killStaleEmbeddedPostgresOnWindows(target.dataDir);
+    if (killed > 0) {
+      console.log(`[paperclip] cleaned up ${killed} stale embedded postgres process${killed === 1 ? "" : "es"}`);
+    }
+  } catch {
+    // best-effort — never block shutdown on cleanup
+  }
+}
+
 async function shutdown(signal: NodeJS.Signals) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -695,6 +726,7 @@ async function shutdown(signal: NodeJS.Signals) {
   await removeLocalServiceRegistryRecord(devService.serviceKey);
 
   if (!child) {
+    await cleanupEmbeddedPostgresOrphans();
     exitForSignal(signal);
     return;
   }
@@ -702,6 +734,7 @@ async function shutdown(signal: NodeJS.Signals) {
   childExitWasExpected = true;
   child.kill(signal);
   const exit = await waitForChildExit();
+  await cleanupEmbeddedPostgresOrphans();
   if (exit.signal) {
     exitForSignal(exit.signal);
     return;
@@ -723,6 +756,7 @@ installDevIntervals();
 if (mode === "watch") {
   const exit = await waitForChildExit();
   await removeLocalServiceRegistryRecord(devService.serviceKey);
+  await cleanupEmbeddedPostgresOrphans();
   if (exit.signal) {
     exitForSignal(exit.signal);
   }
