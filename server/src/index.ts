@@ -15,6 +15,7 @@ import {
   inspectMigrations,
   applyPendingMigrations,
   createEmbeddedPostgresLogBuffer,
+  killStaleEmbeddedPostgresOnWindows,
   reconcilePendingMigrationHistory,
   formatDatabaseBackupResult,
   runDatabaseBackup,
@@ -396,6 +397,12 @@ export async function startServer(): Promise<StartedServer> {
         if (existsSync(postmasterPidFile)) {
           logger.warn("Removing stale embedded PostgreSQL lock file");
           rmSync(postmasterPidFile, { force: true });
+        }
+        const killedStale = await killStaleEmbeddedPostgresOnWindows(dataDir);
+        if (killedStale > 0) {
+          logger.warn(
+            `Killed ${killedStale} stale embedded PostgreSQL process${killedStale === 1 ? "" : "es"} holding shared memory before startup`,
+          );
         }
         try {
           await embeddedPostgres.start();

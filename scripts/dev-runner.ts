@@ -455,6 +455,7 @@ async function maybePreflightMigrations(options: { interactive?: boolean; autoAp
   const autoApply = options.autoApply ?? env.PAPERCLIP_MIGRATION_AUTO_APPLY === "true";
   const exitOnDecline = options.exitOnDecline ?? mode === "watch";
 
+  console.log("[paperclip] checking database migrations (may take ~30s to boot embedded postgres)...");
   const payload = await refreshPendingMigrations();
   if (payload.status !== "needsMigrations" || pendingMigrations.length === 0) {
     return;

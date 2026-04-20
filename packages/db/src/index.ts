@@ -30,5 +30,6 @@ export {
   createEmbeddedPostgresLogBuffer,
   formatEmbeddedPostgresError,
 } from "./embedded-postgres-error.js";
+export { killStaleEmbeddedPostgresOnWindows } from "./migration-runtime.js";
 export { issueRelations } from "./schema/issue_relations.js";
 export * from "./schema/index.js";

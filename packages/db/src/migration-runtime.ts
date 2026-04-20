@@ -1,9 +1,13 @@
+import { execFile } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import path from "node:path";
+import { promisify } from "node:util";
 import { ensurePostgresDatabase, getPostgresDataDirectory } from "./client.js";
 import { createEmbeddedPostgresLogBuffer, formatEmbeddedPostgresError } from "./embedded-postgres-error.js";
 import { resolveDatabaseTarget } from "./runtime-config.js";
+
+const execFileAsync = promisify(execFile);
 
 type EmbeddedPostgresInstance = {
   initialise(): Promise<void>;
@@ -74,6 +78,54 @@ async function findAvailablePort(startPort: number): Promise<number> {
   throw new Error(
     `Embedded PostgreSQL could not find a free port from ${startPort} to ${startPort + maxLookahead - 1}`,
   );
+}
+
+export async function killStaleEmbeddedPostgresOnWindows(dataDir: string): Promise<number> {
+  if (process.platform !== "win32") return 0;
+
+  const normalizedDataDir = path.resolve(dataDir).replace(/\\/g, "/").toLowerCase();
+  let victims: number[] = [];
+
+  try {
+    const { stdout } = await execFileAsync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Get-CimInstance Win32_Process -Filter \"Name='postgres.exe'\" | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress",
+      ],
+      { timeout: 10_000, windowsHide: true },
+    );
+    const trimmed = stdout.trim();
+    if (!trimmed) return 0;
+    const parsed = JSON.parse(trimmed);
+    const items = Array.isArray(parsed) ? parsed : [parsed];
+    for (const item of items) {
+      const pid = Number(item?.ProcessId);
+      if (!Number.isInteger(pid) || pid <= 0) continue;
+      const commandLine = String(item?.CommandLine ?? "").replace(/\\/g, "/").toLowerCase();
+      if (!commandLine) continue;
+      const matchesDataDir = commandLine.includes(normalizedDataDir);
+      const matchesEmbeddedBinary = commandLine.includes("/node_modules/@embedded-postgres/");
+      if (matchesDataDir || matchesEmbeddedBinary) {
+        victims.push(pid);
+      }
+    }
+  } catch {
+    return 0;
+  }
+
+  let killed = 0;
+  for (const pid of victims) {
+    try {
+      process.kill(pid, "SIGKILL");
+      killed += 1;
+    } catch {
+      // ignore — process may have already exited
+    }
+  }
+  return killed;
 }
 
 async function loadEmbeddedPostgresCtor(): Promise<EmbeddedPostgresCtor> {
@@ -159,6 +211,14 @@ async function ensureEmbeddedPostgresConnection(
   if (existsSync(postmasterPidFile)) {
     rmSync(postmasterPidFile, { force: true });
   }
+
+  const killed = await killStaleEmbeddedPostgresOnWindows(dataDir);
+  if (killed > 0) {
+    process.emitWarning(
+      `Killed ${killed} stale embedded PostgreSQL process${killed === 1 ? "" : "es"} before startup.`,
+    );
+  }
+
   try {
     await instance.start();
   } catch (error) {
