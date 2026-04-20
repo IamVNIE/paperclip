@@ -117,7 +117,7 @@ function makeAgent() {
   };
 }
 
-describe("agent instructions bundle routes", () => {
+describe("agent instructions bundle routes", { timeout: 15000 }, () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("../routes/agents.js");

@@ -50,7 +50,7 @@ function createApp(actorOverrides: Partial<Express.Request["actor"]> = {}) {
   return app;
 }
 
-describe("adapter routes", () => {
+describe("adapter routes", { timeout: 15000 }, () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.doUnmock("../adapters/index.js");

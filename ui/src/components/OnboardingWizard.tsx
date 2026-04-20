@@ -650,6 +650,7 @@ export function OnboardingWizard() {
                     key={s}
                     type="button"
                     onClick={() => setStep(s)}
+                    aria-current={s === step ? "step" : undefined}
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors cursor-pointer",
                       s === step
@@ -848,7 +849,7 @@ export function OnboardingWizard() {
                   {isLocalAdapter && (
                     <div className="space-y-3">
                       <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">
+                        <label id="model-picker-label" className="text-xs text-muted-foreground mb-1 block">
                           Model
                         </label>
                         <Popover
@@ -859,7 +860,7 @@ export function OnboardingWizard() {
                           }}
                         >
                           <PopoverTrigger asChild>
-                            <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
+                            <button aria-labelledby="model-picker-label" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
                               <span
                                 className={cn(
                                   !model && "text-muted-foreground"

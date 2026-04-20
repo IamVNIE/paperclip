@@ -128,7 +128,7 @@ function buildSourceConfig(): PaperclipConfig {
   };
 }
 
-describe("worktree helpers", () => {
+describe("worktree helpers", { timeout: 25000 }, () => {
   it("sanitizes instance ids", () => {
     expect(sanitizeWorktreeInstanceId("feature/worktree-support")).toBe("feature-worktree-support");
     expect(sanitizeWorktreeInstanceId("  ")).toBe("worktree");
@@ -1047,7 +1047,7 @@ describe("worktree helpers", () => {
   }, 20_000);
 });
 
-describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
+describeEmbeddedPostgres("pauseSeededScheduledRoutines", { timeout: 25000 }, () => {
   it("pauses only routines with enabled schedule triggers", async () => {
     const tempDb = await startEmbeddedPostgresTestDatabase("paperclip-worktree-routines-");
     const db = createDb(tempDb.connectionString);

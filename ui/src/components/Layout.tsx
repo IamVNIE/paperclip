@@ -330,6 +330,10 @@ export function Layout() {
 
         {isMobile ? (
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+            aria-hidden={!sidebarOpen}
             className={cn(
               "fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden pt-[env(safe-area-inset-top)] transition-transform duration-100 ease-out",
               sidebarOpen ? "translate-x-0" : "-translate-x-full"

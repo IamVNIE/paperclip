@@ -47,6 +47,24 @@ Every PR must include a **Model Used** section specifying which AI model produce
 
 All tests must pass before a PR can be merged. Run them locally first and verify CI is green after pushing.
 
+#### Test Configuration
+
+The test suite uses Vitest with resource-aware parallelism settings to prevent flakiness on dev machines:
+
+```bash
+# Run tests locally
+pnpm test:run
+
+# Run with coverage report
+pnpm test:run --coverage
+```
+
+**Important:** Do not change `vitest.config.ts` parallelism settings (`maxWorkers`, `minWorkers`) without approval. The current settings are tuned to prevent resource contention on typical dev machines while maintaining reasonable CI speed. If you experience test timeouts locally:
+
+1. Ensure you have at least 4GB free RAM
+2. Close other resource-heavy applications (Docker, VMs, etc.)
+3. If timeouts persist, check if `VITEST_MAX_WORKERS` env var is set and clear it
+
 ### Greptile Review
 
 We use [Greptile](https://greptile.com) for automated code review. Your PR must achieve a **5/5 Greptile score** with **all Greptile comments addressed** before it can be merged. If Greptile leaves comments, fix or respond to each one and request a re-review.

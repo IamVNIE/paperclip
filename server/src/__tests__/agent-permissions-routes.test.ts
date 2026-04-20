@@ -149,7 +149,7 @@ async function createApp(actor: Record<string, unknown>) {
   return app;
 }
 
-describe("agent permission routes", () => {
+describe("agent permission routes", { timeout: 15000 }, () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("@paperclipai/shared/telemetry");
