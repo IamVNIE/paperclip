@@ -749,6 +749,22 @@ process.on("SIGTERM", () => {
   void shutdown("SIGTERM");
 });
 
+console.log("[paperclip] killing any stale embedded postgres processes from previous runs...");
+const preKilled = await (async () => {
+  try {
+    const target = resolveDatabaseTarget();
+    if (target.mode !== "embedded-postgres") return 0;
+    return await killStaleEmbeddedPostgresOnWindows(target.dataDir);
+  } catch {
+    return 0;
+  }
+})();
+if (preKilled > 0) {
+  console.log(`[paperclip] killed ${preKilled} stale postgres process${preKilled === 1 ? "" : "es"} before startup`);
+} else {
+  console.log("[paperclip] no stale postgres processes found");
+}
+
 await maybePreflightMigrations();
 await startServerChild();
 installDevIntervals();
