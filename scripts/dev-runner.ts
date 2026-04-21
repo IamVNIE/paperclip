@@ -457,6 +457,11 @@ async function maybePreflightMigrations(options: { interactive?: boolean; autoAp
   const autoApply = options.autoApply ?? env.PAPERCLIP_MIGRATION_AUTO_APPLY === "true";
   const exitOnDecline = options.exitOnDecline ?? mode === "watch";
 
+  if (mode === "watch" && autoApply && process.env.PAPERCLIP_DEV_SKIP_PREFLIGHT !== "false") {
+    console.log("[paperclip] skipping migration preflight (server will auto-apply on startup)");
+    return;
+  }
+
   console.log("[paperclip] checking database migrations (embedded postgres cold start ~30s)...");
   const startedAt = Date.now();
   const heartbeat = setInterval(() => {
