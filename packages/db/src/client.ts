@@ -754,6 +754,36 @@ export async function migratePostgresIfEmpty(url: string): Promise<MigrationBoot
   }
 }
 
+function isPostgresNotReadyError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const rec = error as { code?: unknown };
+  // 57P03 = cannot_connect_now (recovery still in progress / startup incomplete)
+  // 08001/08003/08006 = connection exception (postgres transient)
+  // XX000 = internal error, often produced during early startup
+  return rec.code === "57P03" || rec.code === "08001" || rec.code === "08003" || rec.code === "08006";
+}
+
+async function waitForPostgresReady(url: string, timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown = null;
+  while (Date.now() < deadline) {
+    const sql = createUtilitySql(url);
+    try {
+      await sql`select 1`;
+      await sql.end();
+      return;
+    } catch (error) {
+      await sql.end().catch(() => {});
+      lastError = error;
+      if (!isPostgresNotReadyError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Postgres did not become ready within ${timeoutMs}ms`);
+}
+
 export async function ensurePostgresDatabase(
   url: string,
   databaseName: string,
@@ -761,6 +791,8 @@ export async function ensurePostgresDatabase(
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(databaseName)) {
     throw new Error(`Unsafe database name: ${databaseName}`);
   }
+
+  await waitForPostgresReady(url);
 
   const sql = createUtilitySql(url);
   try {
