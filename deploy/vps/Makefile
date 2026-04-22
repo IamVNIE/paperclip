@@ -10,8 +10,9 @@
 # Runs from this directory: /home/ec2-user/paperclip/deploy/vps/
 # Reads env from ./.env (copy .env.example).
 #
-# Caddy is managed outside this Makefile. See paperclip.caddyfile for the
-# site-block snippet to drop into /etc/caddy/Caddyfile.d/ manually.
+# Caddy is managed outside this Makefile.
+# See <yourhostname>.caddyfile for the site-block snippet
+# to drop into /etc/caddy/Caddyfile.d/ manually.
 
 SHELL        := /bin/bash
 COMPOSE      := docker compose

@@ -35,12 +35,13 @@ Compose auto-loads `.env` from this directory. `make up` creates
 
 ## 2. Caddy site block (manual, one-time)
 
-`paperclip.caddyfile` in this directory is the site snippet for
-`qb-pp-agents.dev.qwikbuild.com` → `127.0.0.1:3100`. Drop it into your
+`<yourhostname>` in this directory is the site
+snippet for the public hostname → `127.0.0.1:3100`. Drop it into your
 Caddy snippet directory and reload Caddy yourself:
 
 ```sh
-sudo cp paperclip.caddyfile /etc/caddy/Caddyfile.d/paperclip.caddyfile
+sudo cp <yourhostname> \
+        /etc/caddy/Caddyfile.d/<yourhostname>
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 sudo systemctl reload caddy
 ```
@@ -88,8 +89,8 @@ cd /home/ec2-user/paperclip && git fetch && git checkout <tag>
 cd deploy/vps && make update
 ```
 
-If `paperclip.caddyfile` changed, re-copy it to `/etc/caddy/Caddyfile.d/`
-and reload Caddy manually (see §2).
+If `<yourhostname>` changed, re-copy it to
+`/etc/caddy/Caddyfile.d/` and reload Caddy manually (see §2).
 
 After a reboot: nothing auto-starts. Run `make up`.
 
