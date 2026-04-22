@@ -8,17 +8,16 @@
 #   make update        # git pull + rebuild + restart
 #
 # Runs from this directory: /home/ec2-user/paperclip/deploy/vps/
-# Reads env from ./.env (copy .env.example, chmod 600).
+# Reads env from ./.env (copy .env.example).
 #
-# Caddy runs on the HOST (systemd-managed), not in this compose stack.
-# See `caddy-*` targets for interacting with it.
+# Caddy is managed outside this Makefile. See paperclip.caddyfile for the
+# site-block snippet to drop into /etc/caddy/Caddyfile.d/ manually.
 
 SHELL        := /bin/bash
 COMPOSE      := docker compose
 COMPOSE_FILE := compose.yml
 ENV_FILE     := .env
 APP          := paperclip
-HOST_CADDYFILE := /etc/caddy/Caddyfile
 REPO_ROOT    := $(abspath ../..)
 PUBLIC_URL   := $(shell grep -E '^PAPERCLIP_PUBLIC_URL=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-)
 DATA_DIR     := $(shell grep -E '^PAPERCLIP_DATA_DIR=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-)
@@ -101,18 +100,14 @@ ps status: ## Show container state and health
 logs: ## Tail app logs (Ctrl-C to exit)
 	$(COMPOSE) -f $(COMPOSE_FILE) logs -f --tail=200 $(APP)
 
-.PHONY: logs-caddy
-logs-caddy: ## Tail host Caddy logs (journald)
-	sudo journalctl -u caddy -f -n 200
-
 .PHONY: health
-health: ## Curl the public health endpoint (through Caddy)
+health: ## Curl the public health endpoint (through the reverse proxy)
 	@test -n "$(PUBLIC_URL)" || { echo "ERROR: PAPERCLIP_PUBLIC_URL not set in $(ENV_FILE)"; exit 1; }
 	@echo "GET $(PUBLIC_URL)/health"
 	@curl -fsS "$(PUBLIC_URL)/health" | (jq . 2>/dev/null || cat)
 
 .PHONY: health-local
-health-local: ## Curl the app directly on loopback (bypasses Caddy)
+health-local: ## Curl the app directly on loopback
 	@curl -fsS http://127.0.0.1:3100/health | (jq . 2>/dev/null || cat)
 
 .PHONY: wait-healthy
@@ -143,27 +138,6 @@ db-ping: ## Verify the app can reach Neon
 	  const sql = p(process.env.DATABASE_URL, { ssl: 'require', max: 1 }); \
 	  sql\`select 1 as ok\`.then(r => { console.log('db:', r[0]); return sql.end(); }) \
 	    .catch(e => { console.error('db error:', e.message); process.exit(1); });"
-
-# ---------------------------------------------------------------- caddy (host)
-
-.PHONY: caddy-install
-caddy-install: ## Copy ./Caddyfile to $(HOST_CADDYFILE), validate, and reload
-	sudo install -m 0644 -o root -g root Caddyfile $(HOST_CADDYFILE)
-	sudo caddy validate --config $(HOST_CADDYFILE)
-	sudo systemctl reload caddy
-	@echo "Caddy reloaded with $(HOST_CADDYFILE)"
-
-.PHONY: caddy-validate
-caddy-validate: ## Validate the local ./Caddyfile without installing it
-	caddy validate --config Caddyfile
-
-.PHONY: caddy-reload
-caddy-reload: ## Reload host Caddy (use after editing $(HOST_CADDYFILE))
-	sudo systemctl reload caddy
-
-.PHONY: caddy-status
-caddy-status: ## Show host Caddy service status
-	sudo systemctl status caddy --no-pager
 
 # ---------------------------------------------------------------- danger zone
 

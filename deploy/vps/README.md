@@ -1,11 +1,12 @@
 # VPS deployment
 
 Docker Compose stack for running Paperclip on a VPS that already has
-Docker, Caddy, and network/DNS in place. A `Makefile` drives lifecycle — no
-auto-start, no systemd unit.
+Docker, Caddy, and network/DNS in place. A `Makefile` drives the app
+lifecycle — no auto-start, no systemd unit. Caddy is managed separately
+by you.
 
 - App runs in Docker, built from this checkout
-- Published to `127.0.0.1:3100` only — host Caddy reverse-proxies to it
+- Published to `127.0.0.1:3100` only — your host Caddy reverse-proxies to it
 - DB is Neon (external); `DATABASE_URL` comes from `.env`
 
 ---
@@ -32,13 +33,19 @@ Compose auto-loads `.env` from this directory. `make up` creates
 
 ---
 
-## 2. Install the Caddyfile
+## 2. Caddy site block (manual, one-time)
 
-The `Caddyfile` in this directory is the source of truth:
+`paperclip.caddyfile` in this directory is the site snippet for
+`qb-pp-agents.dev.qwikbuild.com` → `127.0.0.1:3100`. Drop it into your
+Caddy snippet directory and reload Caddy yourself:
 
 ```sh
-make caddy-install   # copies to /etc/caddy/Caddyfile, validates, reloads
+sudo cp paperclip.caddyfile /etc/caddy/Caddyfile.d/paperclip.caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+sudo systemctl reload caddy
 ```
+
+The Makefile does not touch Caddy.
 
 ---
 
@@ -47,7 +54,7 @@ make caddy-install   # copies to /etc/caddy/Caddyfile, validates, reloads
 ```sh
 make up              # build + start + wait for healthy
 make health          # curl https://.../health via Caddy
-make health-local    # curl 127.0.0.1:3100/health (bypasses Caddy)
+make health-local    # curl 127.0.0.1:3100/health directly
 ```
 
 ---
@@ -57,21 +64,16 @@ make health-local    # curl 127.0.0.1:3100/health (bypasses Caddy)
 | Command | What it does |
 |---|---|
 | `make up`            | Build + start detached + wait for healthcheck |
-| `make down`          | Stop + remove app container (volume preserved) |
+| `make down`          | Stop + remove app container (data preserved) |
 | `make restart`       | Restart the app in place |
 | `make recreate`      | Recreate container without rebuild (picks up `.env` changes) |
 | `make stop` / `start`| Pause / resume without removing the container |
 | `make logs`          | Tail app logs |
-| `make logs-caddy`    | Tail host Caddy logs (journald) |
 | `make ps`            | Container state + health |
-| `make health`        | Public `/health` via Caddy |
+| `make health`        | Public `/health` via the reverse proxy |
 | `make health-local`  | Loopback `/health` directly |
 | `make shell`         | Shell into the app container |
 | `make db-ping`       | Verify the app can reach Neon |
-| `make caddy-install` | Copy `./Caddyfile` → `/etc/caddy/Caddyfile`, validate, reload |
-| `make caddy-validate`| Validate local `Caddyfile` without installing |
-| `make caddy-reload`  | Reload host Caddy |
-| `make caddy-status`  | Host Caddy systemd status |
 | `make config`        | Render effective compose config |
 | `make update`        | `git pull` + rebuild + restart |
 | `make prune`         | Clean stopped containers + dangling images |
@@ -86,7 +88,8 @@ cd /home/ec2-user/paperclip && git fetch && git checkout <tag>
 cd deploy/vps && make update
 ```
 
-If the `Caddyfile` changed, also run `make caddy-install`.
+If `paperclip.caddyfile` changed, re-copy it to `/etc/caddy/Caddyfile.d/`
+and reload Caddy manually (see §2).
 
 After a reboot: nothing auto-starts. Run `make up`.
 

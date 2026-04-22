@@ -59,3 +59,4 @@ deploy/ec2/.env.keys
 deploy/ec2/Caddyfile
 deploy/vps/.env.keys
 deploy/vps/Caddyfile
+deploy/vps/paperclip.caddyfile
