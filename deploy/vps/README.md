@@ -15,7 +15,6 @@ auto-start, no systemd unit.
 ```sh
 cd /home/ec2-user/paperclip/deploy/vps
 cp .env.example .env
-chmod 600 .env
 ```
 
 Fill in the required values:
