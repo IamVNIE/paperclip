@@ -34,12 +34,10 @@ help: ## Show this help
 
 .PHONY: check-env
 check-env: ## Verify .env exists and has required keys
-	@test -f $(ENV_FILE) || { echo "ERROR: $(ENV_FILE) missing. cp .env.example .env && chmod 600 .env"; exit 1; }
+	@test -f $(ENV_FILE) || { echo "ERROR: $(ENV_FILE) missing. cp .env.example .env"; exit 1; }
 	@for k in PAPERCLIP_PUBLIC_URL DATABASE_URL BETTER_AUTH_SECRET PAPERCLIP_SECRETS_MASTER_KEY PAPERCLIP_DATA_DIR; do \
 	  grep -qE "^$$k=.+" $(ENV_FILE) || { echo "ERROR: $$k missing or empty in $(ENV_FILE)"; exit 1; }; \
 	done
-	@perms=$$(stat -c '%a' $(ENV_FILE) 2>/dev/null || stat -f '%OLp' $(ENV_FILE)); \
-	 if [ "$$perms" != "600" ]; then echo "WARN: $(ENV_FILE) mode is $$perms, expected 600"; fi
 
 .PHONY: ensure-data-dir
 ensure-data-dir: check-env ## Create PAPERCLIP_DATA_DIR if missing
