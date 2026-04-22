@@ -112,3 +112,9 @@ Back up to S3 on a cron:
 # /etc/cron.daily/paperclip-backup
 aws s3 sync "$PAPERCLIP_DATA_DIR" "s3://<bucket>/paperclip-data/$(date +%F)/"
 ```
+
+## 7. First Run
+
+docker compose exec -it --user node paperclip pnpm paperclipai onboard
+
+docker compose exec --user node paperclip pnpm paperclipai auth bootstrap-ceo

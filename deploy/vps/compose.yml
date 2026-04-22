@@ -21,6 +21,11 @@ services:
       PAPERCLIP_SECRETS_STRICT_MODE: "true"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      # MiniMax (Anthropic-API-compatible) override for Claude Code adapter.
+      # Leave unset to use real Anthropic API / subscription auth.
+      ANTHROPIC_BASE_URL: "${ANTHROPIC_BASE_URL:-}"
+      ANTHROPIC_AUTH_TOKEN: "${ANTHROPIC_AUTH_TOKEN:-}"
+      ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-}"
       NODE_ENV: "production"
     # Bound to loopback so only host-local Caddy can reach it.
     # DO NOT change to 0.0.0.0:3100 — that publishes on the public IP.
