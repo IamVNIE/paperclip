@@ -55,3 +55,7 @@ tests/release-smoke/test-results/
 tests/release-smoke/playwright-report/
 .superset/
 .claude/worktrees/
+deploy/ec2/.env.keys
+deploy/ec2/Caddyfile
+deploy/vps/.env.keys
+deploy/vps/Caddyfile

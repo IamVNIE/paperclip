@@ -1,0 +1,49 @@
+name: paperclip
+
+services:
+  paperclip:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: paperclip:${PAPERCLIP_IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      PORT: "3100"
+      SERVE_UI: "true"
+      PAPERCLIP_HOME: "/paperclip"
+      PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: "public"
+      PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:?required}"
+      PAPERCLIP_API_URL: "${PAPERCLIP_PUBLIC_URL}"
+      DATABASE_URL: "${DATABASE_URL:?required}"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?required}"
+      PAPERCLIP_SECRETS_MASTER_KEY: "${PAPERCLIP_SECRETS_MASTER_KEY:?required}"
+      PAPERCLIP_SECRETS_STRICT_MODE: "true"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      NODE_ENV: "production"
+    # Bound to loopback so only host-local Caddy can reach it.
+    # DO NOT change to 0.0.0.0:3100 — that publishes on the public IP.
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      # Bind mount on the host — survives `docker compose down -v`.
+      # Directory is specified by PAPERCLIP_DATA_DIR in .env.
+      - "${PAPERCLIP_DATA_DIR:?required}:/paperclip"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:3100/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
