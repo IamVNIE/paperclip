@@ -52,7 +52,7 @@ export function AuthPage() {
         return;
       }
       if (mode === "forgot_password") {
-        await authApi.requestPasswordReset({ email: email.trim() });
+        await authApi.requestPasswordReset({ email: email.trim(), redirectTo: window.location.origin });
         setResetSent(true);
         return;
       }
