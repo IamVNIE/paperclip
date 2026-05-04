@@ -34,7 +34,7 @@ COPY --parents packages/plugins/sandbox-providers/./*/package.json packages/plug
 COPY packages/plugins/paperclip-plugin-fake-sandbox/package.json packages/plugins/paperclip-plugin-fake-sandbox/
 COPY patches/ patches/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install
 
 FROM base AS build
 WORKDIR /app
