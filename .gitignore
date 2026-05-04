@@ -63,3 +63,5 @@ deploy/vps/.env.keys
 deploy/vps/Caddyfile
 deploy/vps/paperclip.caddyfile
 deploy/vps/qb-pp-agents.dev.qwikbuild.com.caddyfile
+scripts/reset-password-flow.ts
+scripts/verify-signin.ts
