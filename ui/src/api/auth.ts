@@ -113,6 +113,10 @@ export const authApi = {
     await authPost("/sign-up/email", input);
   },
 
+  requestPasswordReset: async (input: { email: string }) => {
+    await authPost("/request-password-reset", input);
+  },
+
   getProfile: async (): Promise<CurrentUserProfile> => {
     const res = await fetch("/api/auth/profile", {
       credentials: "include",

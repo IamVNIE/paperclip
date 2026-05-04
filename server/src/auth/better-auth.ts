@@ -115,6 +115,10 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
       enabled: true,
       requireEmailVerification: false,
       disableSignUp: config.authDisableSignUp,
+      sendResetPassword: async ({ user, url }) => {
+        // Log reset link since we don't have an email service configured
+        console.info(`[Password Reset] For user ${user.email}: ${url}`);
+      },
     },
     advanced: buildBetterAuthAdvancedOptions({ disableSecureCookies: isHttpOnly }),
   };

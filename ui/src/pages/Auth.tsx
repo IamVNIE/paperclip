@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { AsciiArtAnimation } from "@/components/AsciiArtAnimation";
 import { Sparkles } from "lucide-react";
 
-type AuthMode = "sign_in" | "sign_up";
+type AuthMode = "sign_in" | "sign_up" | "forgot_password";
 
 export function AuthPage() {
   const queryClient = useQueryClient();
@@ -19,6 +19,7 @@ export function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
 
   const nextPath = useMemo(
     () => searchParams.get("next") || getRememberedInvitePath() || "/",
@@ -42,17 +43,27 @@ export function AuthPage() {
         await authApi.signInEmail({ email: email.trim(), password });
         return;
       }
-      await authApi.signUpEmail({
-        name: name.trim(),
-        email: email.trim(),
-        password,
-      });
+      if (mode === "sign_up") {
+        await authApi.signUpEmail({
+          name: name.trim(),
+          email: email.trim(),
+          password,
+        });
+        return;
+      }
+      if (mode === "forgot_password") {
+        await authApi.requestPasswordReset({ email: email.trim() });
+        setResetSent(true);
+        return;
+      }
     },
     onSuccess: async () => {
       setError(null);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-      navigate(nextPath, { replace: true });
+      if (mode !== "forgot_password") {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+        navigate(nextPath, { replace: true });
+      }
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : "Authentication failed");
@@ -61,8 +72,8 @@ export function AuthPage() {
 
   const canSubmit =
     email.trim().length > 0 &&
-    password.trim().length > 0 &&
-    (mode === "sign_in" || (name.trim().length > 0 && password.trim().length >= 8));
+    (mode === "forgot_password" ||
+      (password.trim().length > 0 && (mode === "sign_in" || name.trim().length > 0)));
 
   if (isSessionLoading) {
     return (
@@ -83,18 +94,20 @@ export function AuthPage() {
           </div>
 
           <h1 className="text-xl font-semibold">
-            {mode === "sign_in" ? "Sign in to Paperclip" : "Create your Paperclip account"}
+            {mode === "sign_in" ? "Sign in to Paperclip" : mode === "sign_up" ? "Create your Paperclip account" : "Reset your password"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {mode === "sign_in"
               ? "Use your email and password to access this instance."
-              : "Create an account for this instance. Email confirmation is not required in v1."}
+              : mode === "sign_up"
+                ? "Create an account for this instance. Email confirmation is not required in v1."
+                : "Enter your email and we'll log the password reset link for you."}
           </p>
 
           <form
             className="mt-6 space-y-4"
             method="post"
-            action={mode === "sign_up" ? "/api/auth/sign-up/email" : "/api/auth/sign-in/email"}
+            action={mode === "sign_up" ? "/api/auth/sign-up/email" : mode === "sign_in" ? "/api/auth/sign-in/email" : undefined}
             onSubmit={(event) => {
               event.preventDefault();
               if (mutation.isPending) return;
@@ -132,6 +145,7 @@ export function AuthPage() {
                 autoFocus={mode === "sign_in"}
               />
             </div>
+            {mode === "sign_in" && (
             <div>
               <label htmlFor="password" className="text-xs text-muted-foreground mb-1 block">Password</label>
               <input
@@ -141,23 +155,44 @@ export function AuthPage() {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
+                autoComplete="current-password"
               />
             </div>
+            )}
             {error && <p className="text-xs text-destructive">{error}</p>}
-            <Button
-              type="submit"
-              disabled={mutation.isPending}
-              aria-disabled={!canSubmit || mutation.isPending}
-              className={`w-full ${!canSubmit && !mutation.isPending ? "opacity-50" : ""}`}
-            >
-              {mutation.isPending
-                ? "Working…"
-                : mode === "sign_in"
-                  ? "Sign In"
-                  : "Create Account"}
-            </Button>
+            {resetSent ? (
+              <p className="text-sm text-green-600">Check your server logs for the reset link.</p>
+            ) : (
+              <Button
+                type="submit"
+                disabled={mutation.isPending}
+                aria-disabled={!canSubmit || mutation.isPending}
+                className={`w-full ${!canSubmit && !mutation.isPending ? "opacity-50" : ""}`}
+              >
+                {mutation.isPending
+                  ? "Working…"
+                  : mode === "sign_in"
+                    ? "Sign In"
+                    : mode === "forgot_password"
+                      ? "Send Reset Link"
+                      : "Create Account"}
+              </Button>
+            )}
           </form>
+
+          {mode === "sign_in" && (
+            <button
+              type="button"
+              className="mt-3 text-xs text-muted-foreground underline underline-offset-2"
+              onClick={() => {
+                setError(null);
+                setMode("forgot_password");
+                setResetSent(false);
+              }}
+            >
+              Forgot password?
+            </button>
+          )}
 
           <div className="mt-5 text-sm text-muted-foreground">
             {mode === "sign_in" ? "Need an account?" : "Already have an account?"}{" "}
@@ -166,7 +201,8 @@ export function AuthPage() {
               className="font-medium text-foreground underline underline-offset-2"
               onClick={() => {
                 setError(null);
-                setMode(mode === "sign_in" ? "sign_up" : "sign_in");
+                setMode(mode === "forgot_password" ? "sign_in" : mode === "sign_in" ? "sign_up" : "sign_in");
+                setResetSent(false);
               }}
             >
               {mode === "sign_in" ? "Create one" : "Sign in"}
