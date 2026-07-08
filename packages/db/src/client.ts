@@ -46,7 +46,16 @@ export type MigrationState =
     };
 
 export function createDb(url: string) {
-  const sql = postgres(url);
+  const sql = postgres(url, {
+    // Recycle pooled connections so stale sockets don't linger and hang queries.
+    // Against Neon (behind a PgBouncer pooler + idle compute autosuspend), a
+    // connection can be silently dropped server-side while postgres.js keeps
+    // reusing the dead socket, causing CONNECTION_CLOSED heartbeat failures and
+    // hung /api/health -> 504. These timeouts (seconds) force fresh connections.
+    idle_timeout: 30, // close a connection after 30s idle
+    max_lifetime: 60 * 30, // recycle each connection after 30 min regardless
+    connect_timeout: 30, // fail fast instead of hanging on connect
+  });
   return drizzlePg(sql, { schema });
 }
 
