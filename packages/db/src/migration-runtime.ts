@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { ensurePostgresDatabase, getPostgresDataDirectory } from "./client.js";
 import { createEmbeddedPostgresLogBuffer, formatEmbeddedPostgresError } from "./embedded-postgres-error.js";
+import { prepareEmbeddedPostgresNativeRuntime } from "./embedded-postgres-native.js";
 import { resolveDatabaseTarget } from "./runtime-config.js";
 
 const execFileAsync = promisify(execFile);
@@ -144,6 +145,7 @@ async function ensureEmbeddedPostgresConnection(
   preferredPort: number,
 ): Promise<MigrationConnection> {
   const EmbeddedPostgres = await loadEmbeddedPostgresCtor();
+  await prepareEmbeddedPostgresNativeRuntime();
   const selectedPort = await findAvailablePort(preferredPort);
   const postmasterPidFile = path.resolve(dataDir, "postmaster.pid");
   const pgVersionFile = path.resolve(dataDir, "PG_VERSION");

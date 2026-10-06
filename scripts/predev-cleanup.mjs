@@ -59,16 +59,6 @@ function killPostgresWindows() {
   return killed;
 }
 
-function killPostgresUnix() {
-  if (process.platform === "win32") return 0;
-  try {
-    execFileSync("pkill", ["-9", "-f", "node_modules/@embedded-postgres/.*postgres"], { stdio: "ignore" });
-    return 1; // pkill exits 0 if it killed anything; we can't tell how many
-  } catch {
-    return 0;
-  }
-}
-
 function removePostmasterLock() {
   if (!existsSync(POSTMASTER_PID)) return false;
   try {
@@ -94,7 +84,15 @@ function clearRuntimeServices() {
   return removed;
 }
 
-const killed = process.platform === "win32" ? killPostgresWindows() : killPostgresUnix();
+// Windows-only (fork feature). On macOS/Linux upstream's dev-runner and
+// server already recover stale locks safely; an unconditional
+// `pkill -9` here would kill every embedded Postgres on the machine
+// (other instances/worktrees included) and risk data corruption.
+if (process.platform !== "win32") {
+  process.exit(0);
+}
+
+const killed = killPostgresWindows();
 const lockRemoved = removePostmasterLock();
 const registryRemoved = clearRuntimeServices();
 

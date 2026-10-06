@@ -1,18 +1,10 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { execFileSync } from "node:child_process";
+import { describe, expect, it } from "vitest";
 import { resolveRuntimeBind, validateConfiguredBindMode } from "@paperclipai/shared";
 import { buildPresetServerConfig } from "../config/server-bind.js";
 
-vi.mock("node:child_process", () => ({
-  execFileSync: vi.fn(),
-}));
+const ORIGINAL_PATH = process.env.PATH;
 
 describe("network bind helpers", () => {
-  beforeEach(() => {
-    // Clear the environment variable to start fresh
-    delete process.env.PAPERCLIP_TAILNET_BIND_HOST;
-  });
-
   it("rejects non-loopback bind modes in local_trusted", () => {
     expect(
       validateConfiguredBindMode({
@@ -59,17 +51,19 @@ describe("network bind helpers", () => {
   });
 
   it("falls back to loopback when no tailscale address is available for tailnet presets", () => {
-    // Mock execFileSync to throw an error, simulating Tailscale not being available
-    (execFileSync as any).mockImplementation(() => {
-      throw new Error("Tailscale not available");
-    });
+    delete process.env.PAPERCLIP_TAILNET_BIND_HOST;
+    process.env.PATH = "";
 
-    const preset = buildPresetServerConfig("tailnet", {
-      port: 3100,
-      allowedHostnames: [],
-      serveUi: true,
-    });
+    try {
+      const preset = buildPresetServerConfig("tailnet", {
+        port: 3100,
+        allowedHostnames: [],
+        serveUi: true,
+      });
 
-    expect(preset.server.host).toBe("127.0.0.1");
+      expect(preset.server.host).toBe("127.0.0.1");
+    } finally {
+      process.env.PATH = ORIGINAL_PATH;
+    }
   });
 });

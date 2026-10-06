@@ -19,6 +19,11 @@ services:
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?required}"
       PAPERCLIP_SECRETS_MASTER_KEY: "${PAPERCLIP_SECRETS_MASTER_KEY:?required}"
       PAPERCLIP_SECRETS_STRICT_MODE: "true"
+      # Public exposure: keep open registration OFF (CVE-2026-41679 class).
+      # Set to "false" in .env only long enough to create the first account.
+      PAPERCLIP_AUTH_DISABLE_SIGN_UP: "${PAPERCLIP_AUTH_DISABLE_SIGN_UP:-true}"
+      # Fork password-reset: links go to the container log. Opt-in only.
+      PAPERCLIP_AUTH_PASSWORD_RESET_LOG_LINKS: "${PAPERCLIP_AUTH_PASSWORD_RESET_LOG_LINKS:-false}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       # MiniMax (Anthropic-API-compatible) override for Claude Code adapter.

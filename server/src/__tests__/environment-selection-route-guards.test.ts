@@ -28,6 +28,10 @@ const mockEnvironmentService = vi.hoisted(() => ({
   getById: vi.fn(),
 }));
 
+const mockCompanyService = vi.hoisted(() => ({
+  getById: vi.fn(),
+}));
+
 const mockIssueReferenceService = vi.hoisted(() => ({
   deleteDocumentSource: vi.fn(async () => undefined),
   diffIssueReferenceSummary: vi.fn(() => ({
@@ -51,6 +55,7 @@ const mockLogActivity = vi.hoisted(() => vi.fn());
 vi.mock("../services/index.js", () => ({
   projectService: () => mockProjectService,
   issueService: () => mockIssueService,
+  companyService: () => mockCompanyService,
   environmentService: () => mockEnvironmentService,
   issueReferenceService: () => mockIssueReferenceService,
   logActivity: mockLogActivity,
@@ -61,6 +66,9 @@ vi.mock("../services/index.js", () => ({
   }),
   agentService: () => ({
     getById: vi.fn(),
+  }),
+  companySkillService: () => ({
+    completeTestRunForIssue: vi.fn(async () => null),
   }),
   executionWorkspaceService: () => ({}),
   goalService: () => ({
@@ -75,9 +83,28 @@ vi.mock("../services/index.js", () => ({
     listApprovalsForIssue: vi.fn(),
     unlink: vi.fn(),
   }),
+  issueRecoveryActionService: () => ({
+    getActiveForIssue: vi.fn(async () => null),
+    listActiveForIssues: vi.fn(async () => new Map()),
+  }),
+  issueThreadInteractionService: () => ({
+    listForIssue: vi.fn(async () => []),
+    expireRequestConfirmationsSupersededByComment: vi.fn(async () => []),
+    expireStaleRequestConfirmationsForIssueDocument: vi.fn(async () => []),
+  }),
   documentService: () => ({}),
+  documentAnnotationService: () => ({ remapOpenThreadsForDocument: async () => [] }),
   routineService: () => ({}),
   workProductService: () => ({}),
+}));
+
+vi.mock("../services/activity-log.js", async () => ({
+  ...await vi.importActual<typeof import("../services/activity-log.js")>("../services/activity-log.js"),
+  persistActivity: async (db: unknown, input: unknown) => {
+    await mockLogActivity(db, input);
+    return { activity: { id: "activity" }, publication: null };
+  },
+  publishActivity: vi.fn(),
 }));
 
 vi.mock("../services/environments.js", () => ({
@@ -113,7 +140,7 @@ let issueServer: Server | null = null;
 
 function createProjectApp() {
   projectServer ??= buildApp((expressApp) => {
-    expressApp.use("/api", projectRoutes({} as any));
+    expressApp.use("/api", projectRoutes({ transaction: async (effect: (tx: unknown) => unknown) => effect({}) } as any));
   }).listen(0);
   return projectServer;
 }
@@ -158,6 +185,10 @@ describe.sequential("execution environment route guards", () => {
     mockIssueService.update.mockReset();
     mockIssueService.getByIdentifier.mockReset();
     mockIssueService.assertCheckoutOwner.mockReset();
+    mockCompanyService.getById.mockReset();
+    mockCompanyService.getById.mockResolvedValue({
+      id: "company-1",
+    });
     mockEnvironmentService.getById.mockReset();
     mockIssueReferenceService.deleteDocumentSource.mockClear();
     mockIssueReferenceService.diffIssueReferenceSummary.mockClear();

@@ -17,9 +17,33 @@ You need either:
 - board access, or
 - agent permission `can_create_agents=true` in your company
 
-If you do not have this permission, escalate to your CEO or board.
+If you do not have this permission, keep the current task assigned to yourself
+and identify the missing hiring authority. A CEO or manager title does not grant
+hiring permission. Do not reassign the task or create an escalation task to bypass
+the denial. Use the applicable approval flow when available; otherwise save a
+human-input interaction on the current task with `resolverPolicy: "human_only"`
+and `continuationPolicy: "wake_assignee"`, then leave it `in_review`. Use the
+complete human-input payload in the `paperclip` skill; when the requesting user
+owns the decision, address it with their actual `addresseeUserId`. A human answer
+does not itself grant permission: recheck authorization before any hire.
 
 ## Workflow
+
+### Choose the API transport
+
+On **Paperclip Runner**, use the advertised Paperclip tools. Use `get_task_context`
+and `list_agents` for identity and team context, then `search_api` to discover the
+configuration, instruction-template, icon, and `agent-hires` endpoints used below.
+Call the discovered operations with `call_api`; the server supplies company and
+authentication context. Read the returned schemas before drafting the hire.
+
+The shell examples below apply to adapters that receive `PAPERCLIP_API_URL` and
+`PAPERCLIP_API_KEY`. Paperclip Runner does not supply those variables. Do not
+search workspace files for a server address or credentials to recreate that path.
+If `search_api` / `call_api` are unavailable, report that hiring requires the
+operator to enable runner API tools for this company. Preserve the proposed hire
+in the conversation; do not claim an agent was created or substitute a temporary
+subagent for the requested permanent hire.
 
 ### 1. Confirm identity and company context
 
@@ -83,9 +107,9 @@ curl -sS "$PAPERCLIP_API_URL/llms/agent-icons.txt" \
 - leave timer heartbeats off by default; only set `runtimeConfig.heartbeat.enabled=true` with an `intervalSec` when the role genuinely needs scheduled recurring work or the user explicitly asked for it
 - if the role may handle private advisories or sensitive disclosures, confirm a confidential workflow exists first (dedicated skill or documented manual process)
 - capabilities
-- run prompt in adapter config (`promptTemplate` where applicable)
+- managed instructions bundle (`AGENTS.md`) for adapters that support it; avoid durable `promptTemplate` config
 - for coding or execution agents, include the Paperclip execution contract: start actionable work in the same heartbeat; do not stop at a plan unless planning was requested; leave durable progress with a clear next action; use child issues for long or parallel delegated work instead of polling; mark blocked work with owner/action; respect budget, pause/cancel, approval gates, and company boundaries
-- instruction text such as `AGENTS.md` built from step 4; for local managed-bundle adapters, put the adapted `AGENTS.md` content in `adapterConfig.promptTemplate` unless you are a board user intentionally managing bundle paths/files
+- instruction text such as `AGENTS.md` built from step 4; for local managed-bundle adapters, send this as top-level `instructionsBundle.files["AGENTS.md"]`. Do not set `adapterConfig.promptTemplate` or `bootstrapPromptTemplate` for new agents.
 - source issue linkage (`sourceIssueId` or `sourceIssueIds`) when this hire came from an issue
 
 ### 7. Review the draft against the quality checklist
@@ -109,6 +133,7 @@ curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/agent-h
     "desiredSkills": ["vercel-labs/agent-browser/agent-browser"],
     "adapterType": "codex_local",
     "adapterConfig": {"cwd": "/abs/path/to/repo", "model": "o4-mini"},
+    "instructionsBundle": {"files": {"AGENTS.md": "You are the CTO..."}},
     "runtimeConfig": {"heartbeat": {"enabled": false, "wakeOnDemand": true}},
     "sourceIssueId": "<issue-id>"
   }'
