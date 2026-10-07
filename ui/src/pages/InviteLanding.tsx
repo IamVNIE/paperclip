@@ -311,6 +311,9 @@ export function InviteLandingPage() {
   const showsAgentForm = invite?.inviteType !== "bootstrap_ceo" && invite?.allowedJoinTypes === "agent";
   const shouldAutoAcceptHumanInvite =
     Boolean(sessionQuery.data) &&
+    // Wait for the invite itself: a visitor who arrives already signed in (e.g. back from Google)
+    // has a session before the invite loads, and accepting then fails with "Invite not found".
+    Boolean(invite) &&
     !showsAgentForm &&
     invite?.inviteType !== "bootstrap_ceo" &&
     (!inviteJoinRequestStatus || canCompleteAcceptedHumanInvite) &&
