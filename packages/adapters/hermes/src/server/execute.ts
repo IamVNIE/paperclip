@@ -241,9 +241,14 @@ interface ParsedOutput {
 // ---------------------------------------------------------------------------
 
 /** Strip noise lines from a Hermes response (tool output, system messages, etc.) */
+// Hermes status notices such as "⟳ compacting context…" are printed even in quiet mode, sometimes many per line.
+const STATUS_NOTICE_REGEX = /⟳\s*[\p{L} ]{3,40}…\s*/gu;
+
 function cleanResponse(raw: string): string {
   return raw
     .split("\n")
+    .map((line) => line.replace(STATUS_NOTICE_REGEX, ""))
+    .filter((line, i, all) => line.trim() || !all[i].trim())
     .filter((line) => {
       const t = line.trim();
       if (!t) return true; // keep blank lines for paragraph separation
