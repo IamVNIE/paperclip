@@ -166,6 +166,27 @@ export function AuthPage() {
             </p>
           )}
 
+          {(mode === "sign_in" || mode === "sign_up") && healthQuery.data?.features?.googleSignIn && (
+            <div className="mt-6 space-y-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setError(null);
+                  authApi.signInGoogle(nextPath).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+                }}
+              >
+                Continue with Google
+              </Button>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                or use email
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            </div>
+          )}
+
           <form
             className="mt-6 space-y-4"
             method="post"

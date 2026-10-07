@@ -152,6 +152,18 @@ async function authPatch<T>(path: string, body: Record<string, unknown>, parse: 
 }
 
 export const authApi = {
+  /** Fork feature: start Google sign-in; Better Auth answers with the Google authorization URL. */
+  signInGoogle: async (callbackPath: string) => {
+    const res = await fetch("/api/auth/sign-in/social", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "google", callbackURL: callbackPath, errorCallbackURL: "/auth" }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { url?: string; message?: string };
+    if (!res.ok || !data.url) throw new AuthApiError(data.message || "Google sign-in is not available", res.status, data);
+    window.location.assign(data.url);
+  },
   getSession: async (): Promise<AuthSession | null> => {
     const res = await fetch("/api/auth/get-session", {
       credentials: "include",

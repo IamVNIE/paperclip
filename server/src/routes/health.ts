@@ -1,3 +1,4 @@
+import { resolveGoogleSignInConfig } from "../auth/better-auth.js";
 import { supportsLocalAiLogin } from "../services/local-ai-login-policy.js";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { Router } from "express";
@@ -396,6 +397,8 @@ export function healthRoutes(
         commit,
         bootstrapStatus,
         bootstrapInviteActive,
+        // The sign-in page needs to know whether to offer Google; nothing else is revealed.
+        features: { googleSignIn: resolveGoogleSignInConfig() !== null },
         ...(redactedDatabaseBackup ? { databaseBackup: redactedDatabaseBackup } : {}),
         ...(redactedWarnings ? { warnings: redactedWarnings } : {}),
         ...(devServer ? { devServer } : {}),
@@ -422,6 +425,7 @@ export function healthRoutes(
       bootstrapInviteActive,
       features: {
         companyDeletionEnabled: opts.companyDeletionEnabled,
+        googleSignIn: resolveGoogleSignInConfig() !== null,
       },
       serverInfo,
       startupRecovery,

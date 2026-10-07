@@ -264,6 +264,17 @@ export function buildPasswordResetLink(publicUrl: string | undefined, token: str
   return `${origin}/api/auth/reset-password/${encodeURIComponent(token)}?callbackURL=${encodeURIComponent(callbackURL)}`;
 }
 
+/**
+ * Fork feature: optional Google sign-in. Enabled when both PAPERCLIP_GOOGLE_CLIENT_ID and
+ * PAPERCLIP_GOOGLE_CLIENT_SECRET are set. The Google OAuth client needs the redirect URI
+ * `<public base URL>/api/auth/callback/google`.
+ */
+export function resolveGoogleSignInConfig(): { clientId: string; clientSecret: string } | null {
+  const clientId = process.env.PAPERCLIP_GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = process.env.PAPERCLIP_GOOGLE_CLIENT_SECRET?.trim();
+  return clientId && clientSecret ? { clientId, clientSecret } : null;
+}
+
 export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins: string[]): BetterAuthInstance {
   const baseUrl = config.authBaseUrlMode === "explicit" ? config.authPublicBaseUrl : undefined;
   const publicUrl = process.env.PAPERCLIP_PUBLIC_URL?.trim() || baseUrl;
@@ -319,6 +330,20 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
           }
         : {}),
     },
+    // Google accounts link to an existing account with the same verified email. When sign-up is
+    // disabled, Google cannot create new users either (invites still create them).
+    ...(resolveGoogleSignInConfig()
+      ? {
+          socialProviders: {
+            google: {
+              ...resolveGoogleSignInConfig()!,
+              disableImplicitSignUp: config.authDisableSignUp,
+              prompt: "select_account" as const,
+            },
+          },
+          account: { accountLinking: { enabled: true, trustedProviders: ["google"] } },
+        }
+      : {}),
     rateLimit: buildBetterAuthRateLimitOptions({
       deploymentMode: config.deploymentMode,
       deploymentExposure: config.deploymentExposure,
