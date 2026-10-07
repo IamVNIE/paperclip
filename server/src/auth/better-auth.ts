@@ -9,7 +9,11 @@ import {
   authSessions,
   authUsers,
   authVerifications,
+  invites,
 } from "@paperclipai/db";
+import { createHash } from "node:crypto";
+import { and, eq, gt, isNull } from "drizzle-orm";
+import { APIError } from "better-auth/api";
 import type { Config } from "../config.js";
 import { resolvePaperclipInstanceId } from "../home-paths.js";
 import { logger } from "../middleware/logger.js";
@@ -269,6 +273,34 @@ export function buildPasswordResetLink(publicUrl: string | undefined, token: str
  * PAPERCLIP_GOOGLE_CLIENT_SECRET are set. The Google OAuth client needs the redirect URI
  * `<public base URL>/api/auth/callback/google`.
  */
+/**
+ * Fork feature: invite-gated sign-up. When sign-up is disabled, a new account may still be created
+ * (by email or Google) if the request carries a live invite token: header `x-paperclip-invite-token`
+ * (email sign-up) or cookie `paperclip_invite` (set by the invite page before the Google redirect).
+ */
+export const INVITE_TOKEN_HEADER = "x-paperclip-invite-token";
+export const INVITE_TOKEN_COOKIE = "paperclip_invite";
+
+function readInviteToken(headers: Headers | undefined): string | null {
+  if (!headers) return null;
+  const direct = headers.get(INVITE_TOKEN_HEADER)?.trim();
+  if (direct) return direct;
+  const cookie = headers.get("cookie") ?? "";
+  const match = cookie.split(";").map((c) => c.trim()).find((c) => c.startsWith(`${INVITE_TOKEN_COOKIE}=`));
+  return match ? decodeURIComponent(match.slice(INVITE_TOKEN_COOKIE.length + 1)) || null : null;
+}
+
+async function hasLiveInvite(db: Db, token: string | null): Promise<boolean> {
+  if (!token) return false;
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const rows = await db
+    .select({ id: invites.id })
+    .from(invites)
+    .where(and(eq(invites.tokenHash, tokenHash), isNull(invites.revokedAt), isNull(invites.acceptedAt), gt(invites.expiresAt, new Date())))
+    .limit(1);
+  return rows.length > 0;
+}
+
 export function resolveGoogleSignInConfig(): { clientId: string; clientSecret: string } | null {
   const clientId = process.env.PAPERCLIP_GOOGLE_CLIENT_ID?.trim();
   const clientSecret = process.env.PAPERCLIP_GOOGLE_CLIENT_SECRET?.trim();
@@ -310,7 +342,8 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
-      disableSignUp: config.authDisableSignUp,
+      // Enforced by the invite-gated databaseHooks below instead, so invites can still create accounts.
+      disableSignUp: false,
       // Fork feature: operator-assisted password reset. There is no email
       // transport, so the reset link is written to the server log. It is
       // opt-in (PAPERCLIP_AUTH_PASSWORD_RESET_LOG_LINKS=true) because anyone
@@ -337,13 +370,27 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
           socialProviders: {
             google: {
               ...resolveGoogleSignInConfig()!,
-              disableImplicitSignUp: config.authDisableSignUp,
               prompt: "select_account" as const,
             },
           },
           account: { accountLinking: { enabled: true, trustedProviders: ["google"] } },
         }
       : {}),
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user: { email: string }, ctx: { headers?: Headers; request?: { headers: Headers } } | null) => {
+            if (!config.authDisableSignUp) return;
+            // Internal creations (no HTTP request, e.g. bootstrap) are not sign-ups.
+            const headers = (ctx?.headers ?? ctx?.request?.headers) as Headers | undefined;
+            if (!ctx || !headers) return;
+            if (await hasLiveInvite(db, readInviteToken(headers))) return;
+            logger.warn({ email: user.email }, "[auth] sign-up refused: no valid invite");
+            throw new APIError("FORBIDDEN", { message: "Sign-up is invite-only. Open your invite link to create an account." });
+          },
+        },
+      },
+    },
     rateLimit: buildBetterAuthRateLimitOptions({
       deploymentMode: config.deploymentMode,
       deploymentExposure: config.deploymentExposure,

@@ -382,7 +382,7 @@ export function InviteLandingPage() {
         name: name.trim(),
         email: email.trim(),
         password,
-      });
+      }, token);
     },
     onSuccess: async () => {
       setAuthFeedback(null);
@@ -706,6 +706,31 @@ export function InviteLandingPage() {
                     I already have an account
                   </button>
                 </div>
+
+                {healthQuery.data?.features?.googleSignIn && (
+                  <div className="mb-4 space-y-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        setError(null);
+                        rememberPendingInviteToken(token);
+                        authApi.rememberInviteForGoogle(token);
+                        authApi
+                          .signInGoogle(`/invite/${encodeURIComponent(token)}`)
+                          .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+                      }}
+                    >
+                      Continue with Google
+                    </Button>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="h-px flex-1 bg-border" />
+                      or use email
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+                  </div>
+                )}
 
                 <form
                   className="space-y-4"
