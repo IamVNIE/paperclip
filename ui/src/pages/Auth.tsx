@@ -43,6 +43,10 @@ export function AuthPage() {
     queryFn: () => healthApi.get(),
     retry: false,
   });
+  const signUpDisabled = healthQuery.data?.features?.signUp === false;
+  useEffect(() => {
+    if (signUpDisabled && mode === "sign_up") setMode("sign_in");
+  }, [signUpDisabled, mode]);
   const { data: session, isLoading: isSessionLoading, error: sessionError } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
@@ -300,6 +304,11 @@ export function AuthPage() {
             </button>
           )}
 
+          {healthQuery.data?.features?.signUp === false ? (
+            <p className="mt-5 text-sm text-muted-foreground">
+              New here? Ask an admin to invite you. Invites create your account.
+            </p>
+          ) : (
           <div className="mt-5 text-sm text-muted-foreground">
             {mode === "sign_in" ? "Need an account?" : "Already have an account?"}{" "}
             <button
@@ -314,6 +323,7 @@ export function AuthPage() {
               {mode === "sign_in" ? "Create one" : "Sign in"}
             </button>
           </div>
+          )}
         </div>
       </div>
 

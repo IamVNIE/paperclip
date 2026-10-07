@@ -125,6 +125,7 @@ export function healthRoutes(
     deploymentExposure: DeploymentExposure;
     authReady: boolean;
     companyDeletionEnabled: boolean;
+    authDisableSignUp?: boolean;
     serverInfo?: ServerInfoSnapshot;
     databaseBackupHealth?: InspectDatabaseBackupHealthOptions;
     runtimeEnv?: CloudInstanceEnv;
@@ -398,7 +399,7 @@ export function healthRoutes(
         bootstrapStatus,
         bootstrapInviteActive,
         // The sign-in page needs to know whether to offer Google; nothing else is revealed.
-        features: { googleSignIn: resolveGoogleSignInConfig() !== null },
+        features: { googleSignIn: resolveGoogleSignInConfig() !== null, signUp: opts.authDisableSignUp !== true },
         ...(redactedDatabaseBackup ? { databaseBackup: redactedDatabaseBackup } : {}),
         ...(redactedWarnings ? { warnings: redactedWarnings } : {}),
         ...(devServer ? { devServer } : {}),
@@ -426,6 +427,7 @@ export function healthRoutes(
       features: {
         companyDeletionEnabled: opts.companyDeletionEnabled,
         googleSignIn: resolveGoogleSignInConfig() !== null,
+        signUp: opts.authDisableSignUp !== true,
       },
       serverInfo,
       startupRecovery,

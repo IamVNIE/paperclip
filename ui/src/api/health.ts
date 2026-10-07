@@ -39,6 +39,7 @@ export type HealthStatus = {
   features?: {
     companyDeletionEnabled?: boolean;
     googleSignIn?: boolean;
+    signUp?: boolean;
   };
   serverInfo?: ServerInfoSnapshot;
   devServer?: DevServerHealthStatus;
